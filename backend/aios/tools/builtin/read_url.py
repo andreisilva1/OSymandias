@@ -7,7 +7,7 @@ from loguru import logger
 
 from aios.tools.registry import register
 
-MAX_CONTENT_CHARS = 8_000
+MAX_CONTENT_CHARS = 4_000
 
 
 @register("read_url")

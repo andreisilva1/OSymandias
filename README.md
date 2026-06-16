@@ -97,18 +97,25 @@ git clone https://github.com/andreisilva1/OSymandias && cd OSymandias
 cp .env.example .env
 # Edit .env — set at least one provider (see below)
 
-# 3. Start everything
+# 3. If using Ollama (local, free) — do this BEFORE docker compose up
+#    Install from https://ollama.com, then:
+ollama serve          # must be running in the background
+ollama pull llama3.2  # pull the default model
+
+# 4. Start everything
 docker compose up -d
 
-# 4. Open the dashboard
+# 5. Open the dashboard
 open http://localhost:3001
 ```
+
+> **Ollama users — common pitfall:** if you skip `ollama serve` + `ollama pull llama3.2` before starting Docker, every job will get stuck in **PLANNING** with an `APIConnectionError` in the worker logs. The Docker workers reach Ollama on the host via `host.docker.internal:11434`, so Ollama must be running on the host before the containers start.
 
 ### Choosing a provider
 
 | Provider | Setup |
 |----------|-------|
-| **Ollama** (local, free) | Install [ollama.com](https://ollama.com), run `ollama pull llama3.2`, set `LLM_DEFAULT_PROVIDER=ollama` |
+| **Ollama** (local, free) | 1. Install [ollama.com](https://ollama.com) · 2. Run `ollama serve` · 3. Run `ollama pull llama3.2` · 4. Set `LLM_DEFAULT_PROVIDER=ollama` in `.env` |
 | **OpenAI** | Set `OPENAI_API_KEY=sk-...` |
 | **Anthropic** | Set `ANTHROPIC_API_KEY=sk-ant-...` |
 | **DeepSeek** | Set `DEEPSEEK_API_KEY=sk-...` |
@@ -121,18 +128,18 @@ open http://localhost:3001
 
 ## Spawning your first job
 
-Go to the dashboard and click **spawn** (or press `+` in the top bar):
+Navigate to **Processes** (`/jobs`) and click **SPAWN** in the top-right corner. A modal opens with four fields:
 
-```
-Title        →  Market Research Report
-Description  →  Research the electric vehicle market in Europe in 2024.
-                Summarize key players, market share, and trends.
-                Write a structured report with an executive summary.
-Priority     →  NORMAL
-Payload      →  {}
-```
+| Field | Purpose | Example |
+|-------|---------|---------|
+| **Title** | Short label shown in the process list | `Market Research Report` |
+| **Description** | The actual goal — the more detail, the better the plan | `Research the EV market in Europe in 2024. Summarize key players, market share, and trends. Write a structured report.` |
+| **Priority** | `HIGH` jumps the queue; `NORMAL` / `LOW` are scheduled in order | `NORMAL` |
+| **Input Payload** | Optional JSON the agents can read via `input_payload` key | `{}` or `{"region": "EU", "year": 2024}` |
 
-Watch the **Live Event Stream** as agents spin up, call tools, and hand off results to each other. The full output appears in **Processes → [job] → OUTPUT** when complete.
+> **Tip — writing good descriptions:** The PlannerAgent reads the description verbatim to decompose the job into tasks. Be explicit about the output format you want (`"write a markdown report"`, `"produce a comparison table"`), the data sources to use, and any constraints (`"use only sources from 2024"`). Vague descriptions produce generic plans; specific descriptions produce targeted pipelines.
+
+Click **SPAWN** and switch to the **Live Event Stream** tab to watch agents spin up in real time, call `web_search` and `read_url`, write findings to shared memory, and hand off results to each other. The aggregated output appears under **Processes → [job] → OUTPUT** when the job completes.
 
 ---
 
@@ -233,8 +240,9 @@ Full API reference: **http://localhost:8000/docs**
 
 | Symptom | Cause | Fix |
 |---------|-------|-----|
-| Job stays PLANNING | Worker not consuming queue | `docker compose logs worker-scheduler --tail=30` |
-| `APIConnectionError` | Ollama not running or key missing | Start `ollama serve`, or set API key in `.env` and restart |
+| Job stays PLANNING indefinitely | Ollama not running or model not pulled | Run `ollama serve` on the host, then `ollama pull llama3.2`. Confirm with `docker compose logs worker-agents --tail=20` — look for `APIConnectionError` |
+| Job stays PLANNING indefinitely | Worker not consuming queue | `docker compose logs worker-scheduler --tail=30` |
+| `APIConnectionError` in worker logs | Ollama unreachable from container | Start `ollama serve` on the host (not inside Docker). The workers connect via `host.docker.internal:11434` |
 | Tokens show as 0 | Beat worker hasn't run yet (60s cycle) | Wait 60s and refresh |
 | `Vector dimension error` | Embedding model mismatch | `docker compose run --rm migrate` (applies migration 0005) |
 | `MaxIterationsExceeded` | Agent looped without producing JSON | Reduce `max_iterations` or improve system prompt |

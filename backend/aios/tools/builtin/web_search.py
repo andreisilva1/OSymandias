@@ -1,45 +1,29 @@
 """
-web_search tool — uses DuckDuckGo (no API key required) as default.
+web_search tool — real web results via DuckDuckGo (no API key required).
 """
-import httpx
+from ddgs import DDGS
 from loguru import logger
 
 from aios.tools.registry import register
 
+_MAX_RESULTS = 5
+
 
 @register("web_search")
 def web_search(query: str) -> dict:
-    """Search the web using DuckDuckGo Instant Answer API."""
+    """Search the web using DuckDuckGo and return up to 5 real results."""
     try:
-        response = httpx.get(
-            "https://api.duckduckgo.com/",
-            params={"q": query, "format": "json", "no_html": "1", "skip_disambig": "1"},
-            timeout=15,
-            follow_redirects=True,
-        )
-        response.raise_for_status()
-        data = response.json()
+        with DDGS() as ddgs:
+            raw = list(ddgs.text(query, max_results=_MAX_RESULTS))
 
-        results = []
-
-        # Abstract (top answer)
-        if data.get("AbstractText"):
-            results.append({
-                "title": data.get("Heading", ""),
-                "snippet": data["AbstractText"],
-                "url": data.get("AbstractURL", ""),
-                "source": "abstract",
-            })
-
-        # Related topics
-        for topic in data.get("RelatedTopics", [])[:8]:
-            if isinstance(topic, dict) and topic.get("Text"):
-                results.append({
-                    "title": topic.get("Text", "")[:120],
-                    "snippet": topic.get("Text", ""),
-                    "url": topic.get("FirstURL", ""),
-                    "source": "related",
-                })
+        results = [
+            {
+                "title":   r.get("title", ""),
+                "url":     r.get("href", ""),
+                "snippet": r.get("body", ""),
+            }
+            for r in raw
+        ]
 
         logger.debug("web_search: query='{}' → {} results", query, len(results))
         return {"query": query, "results": results}

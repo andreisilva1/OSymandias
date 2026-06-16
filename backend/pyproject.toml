@@ -48,6 +48,7 @@ dependencies = [
     # http client (tools)
     "httpx>=0.27.0",
     "beautifulsoup4>=4.12.0",
+    "ddgs>=0.1.0",
 
     # utilities
     "python-dotenv>=1.0.0",
