@@ -1,18 +1,26 @@
 "use client";
 
+import React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Activity, Cpu, Bot, Terminal, HardDrive, Rss, BarChart2 } from "lucide-react";
 import { useJobs } from "@/hooks/useJobData";
 
-const NAV = [
+type NavItem = {
+  label: string;
+  href: string;
+  icon: React.ComponentType<{ className?: string; style?: React.CSSProperties }>;
+  liveKey?: string;
+};
+
+const NAV: { section: string; items: NavItem[] }[] = [
   {
     section: "RUNTIME",
     items: [{ label: "Dashboard", href: "/", icon: Activity }],
   },
   {
     section: "KERNEL",
-    items: [{ label: "Processes", href: "/jobs", icon: Cpu, liveKey: "running" as const }],
+    items: [{ label: "Processes", href: "/jobs", icon: Cpu, liveKey: "running" }],
   },
   {
     section: "SERVICES",

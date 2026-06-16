@@ -8,6 +8,7 @@ import { ExecutionTimeline } from "@/components/execution/ExecutionTimeline";
 import { AgentGraph } from "@/components/execution/AgentGraph";
 import { formatCost, formatTokens, formatDuration } from "@/lib/utils";
 import { Clock, Cpu, DollarSign, Zap, Loader2 } from "lucide-react";
+import { JobOutputViewer } from "@/components/jobs/JobOutputViewer";
 
 type Tab = "OVERVIEW" | "TIMELINE" | "CALL_GRAPH" | "EVENT_LOG" | "SYSCALLS" | "OUTPUT";
 const TABS: Tab[] = ["OVERVIEW", "TIMELINE", "CALL_GRAPH", "EVENT_LOG", "SYSCALLS", "OUTPUT"];
@@ -287,15 +288,7 @@ export default function ProcessDetailPage({ params }: { params: { id: string } }
         {/* OUTPUT */}
         {tab === "OUTPUT" && (
           <div className="p-5">
-            {job.output_payload ? (
-              <pre className="text-[12px] bg-background border border-border rounded-[var(--radius)] p-4 overflow-auto leading-relaxed font-mono text-muted-foreground">
-                {JSON.stringify(job.output_payload, null, 2)}
-              </pre>
-            ) : (
-              <div className="flex items-center justify-center py-16 text-[12px] text-muted-foreground/30 border border-border rounded-[var(--radius)]">
-                no output yet — process still running
-              </div>
-            )}
+            <JobOutputViewer outputPayload={job.output_payload} tasks={tasks} />
           </div>
         )}
       </div>

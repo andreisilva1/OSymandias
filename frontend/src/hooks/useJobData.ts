@@ -15,8 +15,8 @@ export function useJob(id: string | null) {
     queryKey: ["job", id],
     queryFn: () => api.jobs.get(id!),
     enabled: !!id,
-    refetchInterval: (data) =>
-      data?.status === "RUNNING" || data?.status === "PLANNING" ? 3000 : false,
+    refetchInterval: (query) =>
+      query.state.data?.status === "RUNNING" || query.state.data?.status === "PLANNING" ? 3000 : false,
   });
 }
 
