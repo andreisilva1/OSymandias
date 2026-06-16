@@ -1,0 +1,45 @@
+# Environment — NEVER commit
+.env
+.env.local
+.env.*.local
+*.env
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+dist/
+build/
+*.egg-info/
+.venv/
+venv/
+env/
+
+# Logs
+*.log
+logs/
+
+# Celery
+celerybeat-schedule
+celerybeat.pid
+
+# Node / Next.js
+node_modules/
+frontend/.next/
+frontend/out/
+frontend/.turbo/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo

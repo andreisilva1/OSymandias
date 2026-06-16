@@ -1,0 +1,93 @@
+"use client";
+
+import { useQuery } from "@tanstack/react-query";
+import { api } from "@/lib/api";
+
+export function useJobs(params?: { status?: string }) {
+  return useQuery({
+    queryKey: ["jobs", params],
+    queryFn: () => api.jobs.list(params),
+  });
+}
+
+export function useJob(id: string | null) {
+  return useQuery({
+    queryKey: ["job", id],
+    queryFn: () => api.jobs.get(id!),
+    enabled: !!id,
+    refetchInterval: (data) =>
+      data?.status === "RUNNING" || data?.status === "PLANNING" ? 3000 : false,
+  });
+}
+
+export function useJobTasks(jobId: string | null) {
+  return useQuery({
+    queryKey: ["job-tasks", jobId],
+    queryFn: () => api.jobs.tasks(jobId!),
+    enabled: !!jobId,
+    refetchInterval: 5000,
+  });
+}
+
+export function useJobToolCalls(jobId: string | null) {
+  return useQuery({
+    queryKey: ["job-tool-calls", jobId],
+    queryFn: () => api.jobs.toolCalls(jobId!),
+    enabled: !!jobId,
+  });
+}
+
+export function useJobMessages(jobId: string | null) {
+  return useQuery({
+    queryKey: ["job-messages", jobId],
+    queryFn: () => api.jobs.messages(jobId!),
+    enabled: !!jobId,
+  });
+}
+
+export function useJobAgentInstances(jobId: string | null) {
+  return useQuery({
+    queryKey: ["job-agents", jobId],
+    queryFn: () => api.jobs.agentInstances(jobId!),
+    enabled: !!jobId,
+    refetchInterval: 3000,
+  });
+}
+
+export function useMetrics() {
+  return useQuery({
+    queryKey: ["metrics"],
+    queryFn: () => api.metrics.summary(),
+    refetchInterval: 30_000,
+  });
+}
+
+export function useAgents() {
+  return useQuery({
+    queryKey: ["agents"],
+    queryFn: () => api.agents.list(),
+  });
+}
+
+export function useTools() {
+  return useQuery({
+    queryKey: ["tools"],
+    queryFn: () => api.tools.list(),
+  });
+}
+
+export function useEvents(params?: { limit?: number; job_id?: string; event_type?: string }) {
+  return useQuery({
+    queryKey: ["events", params],
+    queryFn: () => api.events.list(params),
+    refetchInterval: 3000,
+  });
+}
+
+export function useMemory(params?: { scope?: string; limit?: number }) {
+  return useQuery({
+    queryKey: ["memory", params],
+    queryFn: () => api.memory.list(params),
+    refetchInterval: 10_000,
+  });
+}

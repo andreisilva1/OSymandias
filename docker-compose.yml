@@ -1,0 +1,222 @@
+services:
+
+  # ---------------------------------------------------------------------------
+  # Infrastructure
+  # ---------------------------------------------------------------------------
+
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: aios
+      POSTGRES_PASSWORD: aios
+      POSTGRES_DB: aios
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U aios"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    environment:
+      RABBITMQ_DEFAULT_USER: aios
+      RABBITMQ_DEFAULT_PASS: aios
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    ports:
+      - "5672:5672"
+      - "15672:15672"  # management UI
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+
+  qdrant:
+    image: qdrant/qdrant:latest
+    volumes:
+      - qdrant_data:/qdrant/storage
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/localhost/6333' 2>/dev/null"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+
+  jaeger:
+    image: jaegertracing/all-in-one:latest
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+    ports:
+      - "16686:16686"  # UI
+      - "4317:4317"    # OTLP gRPC
+      - "4318:4318"    # OTLP HTTP
+
+  # ---------------------------------------------------------------------------
+  # Application
+  # ---------------------------------------------------------------------------
+
+  migrate:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    command: alembic upgrade head
+    env_file: .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    command: uvicorn aios.main:app --host 0.0.0.0 --port 8000 --reload
+    env_file: .env
+    volumes:
+      - ./backend:/app
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      qdrant:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+  worker-scheduler:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    command: celery -A aios.workers.celery_app worker -Q scheduler --concurrency=1 --loglevel=info
+    env_file: .env
+    volumes:
+      - ./backend:/app
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+  worker-agents:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    command: celery -A aios.workers.celery_app worker -Q agents --concurrency=4 --loglevel=info
+    env_file: .env
+    volumes:
+      - ./backend:/app
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      qdrant:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+  worker-tools:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    command: celery -A aios.workers.celery_app worker -Q tools --concurrency=8 --loglevel=info
+    env_file: .env
+    volumes:
+      - ./backend:/app
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+  worker-evaluator:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    command: celery -A aios.workers.celery_app worker -Q evaluator --concurrency=2 --loglevel=info
+    env_file: .env
+    volumes:
+      - ./backend:/app
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+  worker-beat:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    command: celery -A aios.workers.celery_app beat --loglevel=info
+    env_file: .env
+    volumes:
+      - ./backend:/app
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    command: npm run dev
+    env_file: .env
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+      - /app/.next
+    ports:
+      - "3001:3000"
+    depends_on:
+      - api
+
+volumes:
+  postgres_data:
+  redis_data:
+  rabbitmq_data:
+  qdrant_data:
