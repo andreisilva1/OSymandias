@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
 import { useAgents, useTools } from "@/hooks/useJobData";
 import { api } from "@/lib/api";
@@ -249,6 +249,31 @@ function EditPanel({ agent, tools, onClose, onCloned }: { agent: AgentDefinition
 
   const isBuiltin = BUILTIN_AGENTS.has(agent.name);
 
+  // ── Prompt preview ──────────────────────────────────────────────────────────
+  const [promptTab, setPromptTab] = useState<"template" | "preview">("template");
+  const DEFAULT_VARS: Record<string, string> = {
+    task_description: "Research the top 5 AI frameworks in 2025 and summarize key differences.",
+    job_context: "Job: Market Research Report · Priority: HIGH",
+  };
+  const [previewVars, setPreviewVars] = useState<Record<string, string>>(DEFAULT_VARS);
+
+  const detectedVars = useMemo(() => {
+    const matches = [...form.system_prompt_template.matchAll(/\{\{(\w+)\}\}/g)];
+    return [...new Set(matches.map((m) => m[1]))];
+  }, [form.system_prompt_template]);
+
+  const previewHtml = useMemo(() => {
+    let out = form.system_prompt_template
+      .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    out = out.replace(/\{\{(\w+)\}\}/g, (_match, key) => {
+      const val = previewVars[key];
+      return val
+        ? `<mark class="var-known">${val}</mark>`
+        : `<mark class="var-unknown">{{${key}}}</mark>`;
+    });
+    return out.replace(/\n/g, "<br/>");
+  }, [form.system_prompt_template, previewVars]);
+
   function toggleTool(name: string) {
     setAllowedTools((prev) => prev.includes(name) ? prev.filter((t) => t !== name) : [...prev, name]);
   }
@@ -324,14 +349,65 @@ function EditPanel({ agent, tools, onClose, onCloned }: { agent: AgentDefinition
             className={inp} placeholder="What this agent does..." />
         </div>
 
+        {/* ── System Prompt with TEMPLATE / PREVIEW tabs ── */}
         <div>
-          <label className={lbl}>SYSTEM PROMPT</label>
-          <textarea value={form.system_prompt_template}
-            onChange={(e) => setForm({ ...form, system_prompt_template: e.target.value })}
-            rows={8} className={`${inp} font-mono text-[11px] resize-none leading-relaxed`} />
-          <p className="text-[9px] text-muted-foreground/40 mt-1">
-            Variables: {"{{task_description}}"}, {"{{job_context}}"}
-          </p>
+          <div className="flex items-center justify-between mb-1">
+            <label className={lbl}>SYSTEM PROMPT</label>
+            <div className="flex gap-0.5 bg-muted/30 rounded p-0.5">
+              {(["template", "preview"] as const).map((tab) => (
+                <button key={tab} onClick={() => setPromptTab(tab)}
+                  className={`px-2 py-0.5 rounded text-[9px] font-semibold uppercase tracking-wider transition-colors ${
+                    promptTab === tab
+                      ? "bg-border text-foreground"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}>
+                  {tab}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {promptTab === "template" ? (
+            <textarea value={form.system_prompt_template}
+              onChange={(e) => setForm({ ...form, system_prompt_template: e.target.value })}
+              rows={8} className={`${inp} font-mono text-[11px] resize-none leading-relaxed`} />
+          ) : (
+            <div className="rounded border border-border bg-muted/10 p-3 min-h-[130px] text-[11px] leading-relaxed font-mono whitespace-pre-wrap">
+              <style>{`
+                .var-known  { background: rgba(34,197,94,0.18); color: #86efac; border-radius: 3px; padding: 0 2px; font-style: italic; }
+                .var-unknown { background: rgba(239,68,68,0.18); color: #fca5a5; border-radius: 3px; padding: 0 2px; font-style: italic; }
+              `}</style>
+              <span dangerouslySetInnerHTML={{ __html: previewHtml }} />
+            </div>
+          )}
+
+          {/* Variable editor — shown only in preview tab */}
+          {promptTab === "preview" && detectedVars.length > 0 && (
+            <div className="mt-2 space-y-1">
+              <p className="text-[9px] text-muted-foreground/50 uppercase tracking-widest mb-1">Preview values</p>
+              {detectedVars.map((v) => {
+                const isKnown = v === "task_description" || v === "job_context";
+                return (
+                  <div key={v} className="flex items-center gap-2">
+                    <span className={`text-[9px] font-mono shrink-0 ${isKnown ? "text-green-400/70" : "text-red-400/70"}`}>
+                      {`{{${v}}}`}
+                    </span>
+                    <input
+                      value={previewVars[v] ?? ""}
+                      onChange={(e) => setPreviewVars((prev) => ({ ...prev, [v]: e.target.value }))}
+                      placeholder={isKnown ? "" : "unknown — define value"}
+                      className={`${inp} text-[10px] py-0.5 h-6`}
+                    />
+                  </div>
+                );
+              })}
+            </div>
+          )}
+          {promptTab === "template" && (
+            <p className="text-[9px] text-muted-foreground/40 mt-1">
+              Use {"{{variable}}"} to inject context at runtime
+            </p>
+          )}
         </div>
 
         <div className="grid grid-cols-2 gap-3">
