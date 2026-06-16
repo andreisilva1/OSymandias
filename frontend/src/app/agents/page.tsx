@@ -5,7 +5,7 @@ import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
 import { useAgents, useTools } from "@/hooks/useJobData";
 import { api } from "@/lib/api";
 
-import { Plus, Loader2, X, ChevronRight, Copy, Trash2, PowerOff, Power } from "lucide-react";
+import { Plus, Loader2, X, ChevronRight, Copy, Trash2, PowerOff, Power, Download, Upload } from "lucide-react";
 import type { AgentDefinition, ToolDefinition } from "@/types";
 
 // ── Shared input styles ───────────────────────────────────────────────────────
@@ -189,6 +189,80 @@ function RegisterModal({ tools, onClose }: { tools: ToolDefinition[]; onClose: (
   );
 }
 
+// ── Output Schema Editor ──────────────────────────────────────────────────────
+type SchemaField = { key: string; type: string; required: boolean };
+const FIELD_TYPES = ["string", "number", "boolean", "array", "object"];
+
+function schemaToFields(schema: Record<string, unknown> | undefined): SchemaField[] {
+  if (!schema || typeof schema !== "object") return [];
+  const props = (schema as Record<string, Record<string, unknown>>).properties ?? {};
+  const req: string[] = (schema as { required?: string[] }).required ?? [];
+  return Object.entries(props).map(([key, def]) => ({
+    key,
+    type: (def as { type?: string }).type ?? "string",
+    required: req.includes(key),
+  }));
+}
+
+function fieldsToSchema(fields: SchemaField[]): Record<string, unknown> {
+  const properties: Record<string, { type: string }> = {};
+  const required: string[] = [];
+  for (const f of fields) {
+    if (!f.key.trim()) continue;
+    properties[f.key.trim()] = { type: f.type };
+    if (f.required) required.push(f.key.trim());
+  }
+  return { type: "object", properties, required };
+}
+
+function OutputSchemaEditor({
+  fields, onChange,
+}: { fields: SchemaField[]; onChange: (f: SchemaField[]) => void }) {
+  function update(i: number, patch: Partial<SchemaField>) {
+    onChange(fields.map((f, idx) => (idx === i ? { ...f, ...patch } : f)));
+  }
+  function remove(i: number) { onChange(fields.filter((_, idx) => idx !== i)); }
+  function add() { onChange([...fields, { key: "", type: "string", required: false }]); }
+
+  return (
+    <div className="space-y-1">
+      {fields.map((f, i) => (
+        <div key={i} className="flex items-center gap-1.5">
+          <input
+            value={f.key}
+            onChange={(e) => update(i, { key: e.target.value })}
+            placeholder="field_name"
+            className={`${inp} font-mono text-[10px] flex-1 py-0.5 h-6`}
+          />
+          <select
+            value={f.type}
+            onChange={(e) => update(i, { type: e.target.value })}
+            className={`${inp} text-[10px] py-0.5 h-6 w-24`}>
+            {FIELD_TYPES.map((t) => <option key={t}>{t}</option>)}
+          </select>
+          <button
+            onClick={() => update(i, { required: !f.required })}
+            title={f.required ? "Required" : "Optional"}
+            className={`text-[9px] font-semibold px-1.5 h-6 border rounded transition-colors ${
+              f.required
+                ? "border-amber/60 text-amber bg-amber/10"
+                : "border-border text-muted-foreground hover:border-muted-foreground"
+            }`}>
+            REQ
+          </button>
+          <button onClick={() => remove(i)} className="text-muted-foreground/40 hover:text-red transition-colors">
+            <X className="w-3 h-3" />
+          </button>
+        </div>
+      ))}
+      <button onClick={add}
+        className="flex items-center gap-1 text-[10px] text-muted-foreground/50 hover:text-muted-foreground transition-colors mt-1">
+        <Plus className="w-3 h-3" /> add field
+      </button>
+    </div>
+  );
+}
+
 // ── Edit panel ────────────────────────────────────────────────────────────────
 function EditPanel({ agent, tools, onClose, onCloned }: { agent: AgentDefinition; tools: ToolDefinition[]; onClose: () => void; onCloned: (a: AgentDefinition) => void }) {
   const qc = useQueryClient();
@@ -201,10 +275,17 @@ function EditPanel({ agent, tools, onClose, onCloned }: { agent: AgentDefinition
     timeout_seconds: agent.timeout_seconds,
   });
   const [allowedTools, setAllowedTools] = useState<string[]>(agent.allowed_tools);
+  const [schemaFields, setSchemaFields] = useState<SchemaField[]>(() =>
+    schemaToFields(agent.output_schema as Record<string, unknown> | undefined)
+  );
   const [saved, setSaved] = useState(false);
 
   const { mutate: save, isPending: saving } = useMutation({
-    mutationFn: () => api.agents.update(agent.name, { ...form, allowed_tools: allowedTools }),
+    mutationFn: () => api.agents.update(agent.name, {
+      ...form,
+      allowed_tools: allowedTools,
+      output_schema: schemaFields.length > 0 ? fieldsToSchema(schemaFields) : undefined,
+    }),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["agents"] }); setSaved(true); setTimeout(() => setSaved(false), 2000); },
   });
 
@@ -248,6 +329,44 @@ function EditPanel({ agent, tools, onClose, onCloned }: { agent: AgentDefinition
   });
 
   const isBuiltin = BUILTIN_AGENTS.has(agent.name);
+
+  // ── Export / Import JSON ─────────────────────────────────────────────────────
+  function exportJson() {
+    const data = {
+      name: agent.name,
+      version: agent.version,
+      role: agent.role,
+      ...form,
+      allowed_tools: allowedTools,
+      output_schema: schemaFields.length > 0 ? fieldsToSchema(schemaFields) : undefined,
+    };
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = `${agent.name}.json`; a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  function importJson(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    file.text().then((text) => {
+      try {
+        const data = JSON.parse(text);
+        setForm({
+          description: data.description ?? "",
+          system_prompt_template: data.system_prompt_template ?? form.system_prompt_template,
+          llm_provider: data.llm_provider ?? form.llm_provider,
+          llm_model: data.llm_model ?? form.llm_model,
+          max_iterations: data.max_iterations ?? form.max_iterations,
+          timeout_seconds: data.timeout_seconds ?? form.timeout_seconds,
+        });
+        if (Array.isArray(data.allowed_tools)) setAllowedTools(data.allowed_tools);
+        if (data.output_schema) setSchemaFields(schemaToFields(data.output_schema));
+      } catch { /* ignore invalid JSON */ }
+    });
+    e.target.value = "";
+  }
 
   // ── Prompt preview ──────────────────────────────────────────────────────────
   const [promptTab, setPromptTab] = useState<"template" | "preview">("template");
@@ -459,6 +578,11 @@ function EditPanel({ agent, tools, onClose, onCloned }: { agent: AgentDefinition
           </div>
         </div>
 
+        <div>
+          <label className={lbl}>OUTPUT SCHEMA</label>
+          <OutputSchemaEditor fields={schemaFields} onChange={setSchemaFields} />
+        </div>
+
         {/* Metadata */}
         <div className="border border-border bg-background p-3 space-y-1">
           <div className="flex justify-between text-[10px]">
@@ -480,8 +604,8 @@ function EditPanel({ agent, tools, onClose, onCloned }: { agent: AgentDefinition
         </div>
       </div>
 
-      {/* Save */}
-      <div className="px-4 py-3 border-t border-border shrink-0">
+      {/* Save + Export/Import */}
+      <div className="px-4 py-3 border-t border-border shrink-0 space-y-2">
         <button onClick={() => save()} disabled={saving}
           className="w-full flex items-center justify-center gap-1.5 px-3 py-2 text-xs border disabled:opacity-40 transition-colors"
           style={saved
@@ -489,6 +613,16 @@ function EditPanel({ agent, tools, onClose, onCloned }: { agent: AgentDefinition
             : { background: "rgba(201,168,76,0.08)", borderColor: "#C9A84C", color: "#C9A84C" }}>
           {saving ? <Loader2 className="w-3 h-3 animate-spin" /> : saved ? "SAVED ✓" : "SAVE CHANGES"}
         </button>
+        <div className="flex gap-2">
+          <button onClick={exportJson}
+            className="flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 text-[10px] border border-border text-muted-foreground hover:text-foreground hover:border-muted-foreground transition-colors">
+            <Download className="w-3 h-3" /> EXPORT JSON
+          </button>
+          <label className="flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 text-[10px] border border-border text-muted-foreground hover:text-foreground hover:border-muted-foreground transition-colors cursor-pointer">
+            <Upload className="w-3 h-3" /> IMPORT JSON
+            <input type="file" accept=".json,application/json" className="hidden" onChange={importJson} />
+          </label>
+        </div>
       </div>
     </div>
   );
