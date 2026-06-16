@@ -11,6 +11,7 @@
 [![Celery](https://img.shields.io/badge/Celery-5-37814A?style=flat-square&logo=celery)](https://docs.celeryq.dev)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-4169E1?style=flat-square&logo=postgresql)](https://postgresql.org)
 [![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?style=flat-square&logo=docker)](https://docs.docker.com/compose)
+[![Tests](https://github.com/andreisilva1/OSymandias/actions/workflows/tests.yml/badge.svg)](https://github.com/andreisilva1/OSymandias/actions/workflows/tests.yml)
 ![Status](https://img.shields.io/badge/status-in%20development-orange?style=flat-square)
 
 </div>

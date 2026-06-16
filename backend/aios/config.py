@@ -20,8 +20,8 @@ class Settings(BaseSettings):
     otel_exporter_otlp_endpoint: str = "http://jaeger:4317"
     otel_service_name: str = "osymandias"
 
-    # CORS — comma-separated list of allowed origins
-    cors_origins: list[str] = ["http://localhost:3001", "http://localhost:3000"]
+    # CORS — comma-separated origins (e.g. "http://localhost:3001,http://localhost:3000")
+    cors_origins: str = "http://localhost:3001,http://localhost:3000"
 
     # LLM
     llm_default_provider: str = "ollama"
