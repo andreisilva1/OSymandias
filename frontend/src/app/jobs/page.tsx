@@ -148,7 +148,7 @@ export default function ProcessesPage() {
             <Link key={job.id} href={`/jobs/${job.id}`}
               className="grid grid-cols-[88px_1fr_110px_80px_70px_70px_80px_28px] gap-2 px-5 py-3 hover:bg-accent/60 transition-colors items-center group">
               <span className="pid">{job.id.slice(0, 8)}</span>
-              <div>
+              <div className="min-w-0">
                 <div className="text-[13px] text-foreground truncate">{job.title}</div>
                 {job.description && <div className="text-[11px] text-muted-foreground/50 truncate mt-0.5">{job.description}</div>}
               </div>

@@ -6,7 +6,7 @@ from datetime import datetime, timedelta, timezone
 
 import redis as _redis
 from loguru import logger
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, and_, select
 
 from aios.config import settings
 from aios.core.event_emitter import EventEmitter
@@ -27,7 +27,18 @@ def monitor_heartbeats() -> None:
         crashed = session.scalars(
             select(AgentInstance).where(
                 AgentInstance.status == AgentInstanceStatus.RUNNING,
-                AgentInstance.last_heartbeat_at < threshold,
+                or_(
+                    # Agent sent at least one heartbeat but it is now stale
+                    and_(
+                        AgentInstance.last_heartbeat_at.isnot(None),
+                        AgentInstance.last_heartbeat_at < threshold,
+                    ),
+                    # Agent never sent a heartbeat (worker died before first flush)
+                    and_(
+                        AgentInstance.last_heartbeat_at.is_(None),
+                        AgentInstance.created_at < threshold,
+                    ),
+                ),
             )
         ).all()
 

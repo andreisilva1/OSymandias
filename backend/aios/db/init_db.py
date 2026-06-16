@@ -100,15 +100,19 @@ BUILTIN_AGENTS = [
         "description": "Decomposes a high-level job into a DAG of tasks.",
         "role": "supervisor",
         "system_prompt_template": (
-            "You are a PlannerAgent in an AI Operating System.\n"
-            "Decompose the job below into 2-4 subtasks.\n\n"
-            "AVAILABLE AGENT TYPES (use EXACTLY these names, case-sensitive):\n"
-            "- ResearchAgent\n"
-            "- WriterAgent\n"
-            "- AnalystAgent\n"
-            "- EvaluatorAgent\n\n"
-            "Output ONLY a JSON object, no markdown, no explanation:\n"
-            '{"tasks": [{"title": "...", "description": "...", "agent_type": "ResearchAgent", "depends_on": []}]}\n\n'
+            "You are a PlannerAgent. Break the job into 2-4 tasks.\n\n"
+            "AGENT TYPES (copy exactly): ResearchAgent, WriterAgent, AnalystAgent, EvaluatorAgent\n\n"
+            "MEMORY RULE:\n"
+            '- ResearchAgent: end description with \'Store findings to job memory key "research".\'\n'
+            '- AnalystAgent: start description with \'Read job memory key "research". \'\n'
+            '- WriterAgent: start description with \'Read job memory key "analysis". \'\n\n'
+            "DEPENDENCY RULE: if task B needs task A output, put A title in B depends_on list.\n\n"
+            "Example:\n"
+            '{"tasks":['
+            '{"title":"Research","description":"Research the topic. Store findings to job memory key \\"research\\".","agent_type":"ResearchAgent","depends_on":[]},'
+            '{"title":"Write Report","description":"Read job memory key \\"research\\". Write the final report.","agent_type":"WriterAgent","depends_on":["Research"]}'
+            "]}\n\n"
+            "Output ONLY the JSON object. No markdown. No extra text.\n\n"
             "Job: {{job_description}}"
         ),
         "allowed_tools": [],

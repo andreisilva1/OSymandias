@@ -17,9 +17,9 @@ from aios.models import (
     Job,
     JobStatus,
     Task,
-    TaskDependency,
     TaskStatus,
 )
+from aios.models.task import TaskDependency
 from aios.workers.celery_app import celery_app
 
 
@@ -98,9 +98,15 @@ def resolve_dag(self, job_id: str) -> None:
 
         dispatched = []
         for task in tasks:
-            dep_ids = [d.depends_on_task_id for d in task.dependencies]
+            # Explicit SQL for dep IDs — avoids SQLAlchemy lazy-load returning
+            # stale empty collections when the session first loads a task.
+            dep_ids = session.scalars(
+                select(TaskDependency.depends_on_task_id).where(
+                    TaskDependency.task_id == task.id
+                )
+            ).all()
+
             if not dep_ids:
-                # No dependencies → immediately ready
                 _mark_ready_and_dispatch(session, task, job)
                 dispatched.append(task.id)
                 continue
@@ -121,7 +127,6 @@ def resolve_dag(self, job_id: str) -> None:
         if all_tasks and all(t.status == TaskStatus.COMPLETED for t in all_tasks):
             job.status = JobStatus.COMPLETED
             job.completed_at = datetime.now(timezone.utc)
-            # Aggregate outputs from all tasks into job.output_payload
             job.output_payload = {
                 t.title: t.output_result
                 for t in all_tasks
@@ -130,12 +135,17 @@ def resolve_dag(self, job_id: str) -> None:
             EventEmitter.emit_sync(session, "JOB_COMPLETED", {}, job_id=job.id)
 
         elif any(t.status == TaskStatus.FAILED for t in all_tasks):
-            failed_retrying = [
+            # A task is definitively failed when:
+            #   • status=FAILED (set by _handle_task_failure — no retry attempted), or
+            #   • status=RETRYING but all attempts exhausted (set by heartbeat monitor).
+            # In both cases the job cannot complete.
+            still_active = [
                 t for t in all_tasks
-                if t.status in (TaskStatus.FAILED, TaskStatus.RETRYING)
-                and t.attempt_count >= t.max_attempts
+                if t.status in (TaskStatus.PENDING, TaskStatus.WAITING, TaskStatus.READY,
+                                TaskStatus.ASSIGNED, TaskStatus.RUNNING)
+                or (t.status == TaskStatus.RETRYING and t.attempt_count < t.max_attempts)
             ]
-            if failed_retrying:
+            if not still_active:
                 job.status = JobStatus.FAILED
                 job.completed_at = datetime.now(timezone.utc)
                 EventEmitter.emit_sync(
