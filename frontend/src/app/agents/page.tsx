@@ -5,12 +5,16 @@ import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
 import { useAgents, useTools } from "@/hooks/useJobData";
 import { api } from "@/lib/api";
 
-import { Plus, Loader2, X, ChevronRight } from "lucide-react";
+import { Plus, Loader2, X, ChevronRight, Copy, Trash2, PowerOff, Power } from "lucide-react";
 import type { AgentDefinition, ToolDefinition } from "@/types";
 
 // ── Shared input styles ───────────────────────────────────────────────────────
 const inp = "os-input";
 const lbl = "os-label block mb-1.5";
+
+const BUILTIN_AGENTS = new Set([
+  "PlannerAgent", "ResearchAgent", "WriterAgent", "AnalystAgent", "EvaluatorAgent",
+]);
 
 // ── Provider → model mapping ──────────────────────────────────────────────────
 const PROVIDER_MODELS: Record<string, string[]> = {
@@ -186,7 +190,7 @@ function RegisterModal({ tools, onClose }: { tools: ToolDefinition[]; onClose: (
 }
 
 // ── Edit panel ────────────────────────────────────────────────────────────────
-function EditPanel({ agent, tools, onClose }: { agent: AgentDefinition; tools: ToolDefinition[]; onClose: () => void }) {
+function EditPanel({ agent, tools, onClose, onCloned }: { agent: AgentDefinition; tools: ToolDefinition[]; onClose: () => void; onCloned: (a: AgentDefinition) => void }) {
   const qc = useQueryClient();
   const [form, setForm] = useState({
     description: agent.description ?? "",
@@ -204,10 +208,46 @@ function EditPanel({ agent, tools, onClose }: { agent: AgentDefinition; tools: T
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["agents"] }); setSaved(true); setTimeout(() => setSaved(false), 2000); },
   });
 
-  const { mutate: deactivate, isPending: deactivating } = useMutation({
+  const invalidate = () => qc.invalidateQueries({ queryKey: ["agents"] });
+
+  function applyOptimistic(next: boolean) {
+    qc.setQueryData<AgentDefinition[]>(["agents"], (old) =>
+      old?.map((a) => a.name === agent.name ? { ...a, is_active: next } : a) ?? []
+    );
+  }
+
+  const { mutate: deactivate, isPending: deactivating } = useMutation<void, Error, void>({
     mutationFn: () => api.agents.deactivate(agent.name),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["agents"] }); onClose(); },
+    onMutate: () => applyOptimistic(false),
+    onError:   () => invalidate(),
+    onSettled: () => { invalidate(); onClose(); },
   });
+
+  const { mutate: reactivate, isPending: reactivating } = useMutation<void, Error, void>({
+    mutationFn: () => api.agents.reactivate(agent.name),
+    onMutate: () => applyOptimistic(true),
+    onError:   () => invalidate(),
+    onSettled: () => { invalidate(); onClose(); },
+  });
+
+  const { mutate: hardDelete, isPending: deleting } = useMutation<void, Error, void>({
+    mutationFn: () => api.agents.delete(agent.name),
+    onMutate: () => {
+      qc.setQueryData<AgentDefinition[]>(["agents"], (old) =>
+        old?.filter((a) => a.name !== agent.name) ?? []
+      );
+      onClose();
+    },
+    onError:   () => invalidate(),
+    onSettled: () => invalidate(),
+  });
+
+  const { mutate: clone, isPending: cloning } = useMutation({
+    mutationFn: () => api.agents.clone(agent.name),
+    onSuccess: async (cloned) => { await invalidate(); onCloned(cloned); },
+  });
+
+  const isBuiltin = BUILTIN_AGENTS.has(agent.name);
 
   function toggleTool(name: string) {
     setAllowedTools((prev) => prev.includes(name) ? prev.filter((t) => t !== name) : [...prev, name]);
@@ -216,12 +256,65 @@ function EditPanel({ agent, tools, onClose }: { agent: AgentDefinition; tools: T
   return (
     <div className="w-[420px] shrink-0 border-l border-border flex flex-col bg-card h-full">
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-border shrink-0">
-        <div>
-          <div className="text-[11px] font-semibold text-bright">{agent.name}</div>
-          <div className="text-[10px] text-muted-foreground/50">v{agent.version} · {agent.role}</div>
+      <div className="px-4 py-3 border-b border-border shrink-0">
+        <div className="flex items-center justify-between gap-2">
+          {/* Name + badges */}
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="text-[12px] font-semibold text-bright truncate">{agent.name}</span>
+            {isBuiltin && (
+              <span className="shrink-0 text-[8px] tracking-wider px-1.5 py-0.5 border border-amber/30 text-amber bg-amber/5 rounded">
+                BUILTIN
+              </span>
+            )}
+            <span className={`shrink-0 text-[8px] tracking-wider px-1.5 py-0.5 border rounded ${
+              agent.is_active
+                ? "border-green/30 text-green bg-green/5"
+                : "border-border text-muted-foreground/40"
+            }`}>
+              {agent.is_active ? "ACTIVE" : "INACTIVE"}
+            </span>
+          </div>
+
+          {/* Action icons */}
+          <div className="flex items-center gap-1 shrink-0">
+            {/* Clone */}
+            <button onClick={() => clone()} disabled={cloning} title="Clone agent"
+              className="p-1.5 rounded text-muted-foreground/50 hover:text-cyan hover:bg-cyan/10 hover:ring-1 hover:ring-cyan/40 transition-all disabled:opacity-40">
+              {cloning ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Copy className="w-3.5 h-3.5" />}
+            </button>
+
+            {/* Deactivate / Reactivate */}
+            {agent.is_active ? (
+              <button onClick={() => deactivate()} disabled={deactivating}
+                title="Deactivate agent"
+                className="p-1.5 rounded text-muted-foreground/50 hover:text-amber hover:bg-amber/10 hover:ring-1 hover:ring-amber/40 transition-all disabled:opacity-40">
+                {deactivating ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <PowerOff className="w-3.5 h-3.5" />}
+              </button>
+            ) : (
+              <button onClick={() => reactivate()} disabled={reactivating}
+                title="Reactivate agent"
+                className="p-1.5 rounded text-muted-foreground/50 hover:text-green hover:bg-green/10 hover:ring-1 hover:ring-green/40 transition-all disabled:opacity-40">
+                {reactivating ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Power className="w-3.5 h-3.5" />}
+              </button>
+            )}
+
+            {/* Delete — custom agents only */}
+            {!isBuiltin && (
+              <button onClick={() => hardDelete()} disabled={deleting}
+                title="Delete agent permanently"
+                className="p-1.5 rounded text-muted-foreground/50 hover:text-red hover:bg-red/10 hover:ring-1 hover:ring-red/40 transition-all disabled:opacity-40">
+                {deleting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+              </button>
+            )}
+
+            {/* Divider + Close */}
+            <div className="w-px h-4 bg-border mx-1" />
+            <button onClick={onClose} className="p-1.5 rounded text-muted-foreground/50 hover:text-foreground hover:bg-accent hover:ring-1 hover:ring-border transition-all">
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
         </div>
-        <button onClick={onClose} className="text-muted-foreground hover:text-foreground"><X className="w-4 h-4" /></button>
+        <div className="text-[10px] text-muted-foreground/40 mt-0.5">v{agent.version} · {agent.role}</div>
       </div>
 
       <div className="flex-1 overflow-auto p-4 space-y-3">
@@ -311,16 +404,10 @@ function EditPanel({ agent, tools, onClose }: { agent: AgentDefinition; tools: T
         </div>
       </div>
 
-      {/* Actions */}
-      <div className="flex gap-2 px-4 py-3 border-t border-border shrink-0">
-        {agent.is_active && (
-          <button onClick={() => deactivate()} disabled={deactivating}
-            className="px-3 py-1.5 text-xs border border-border text-muted-foreground hover:border-red hover:text-red transition-colors disabled:opacity-40">
-            {deactivating ? <Loader2 className="w-3 h-3 animate-spin" /> : "DEACTIVATE"}
-          </button>
-        )}
+      {/* Save */}
+      <div className="px-4 py-3 border-t border-border shrink-0">
         <button onClick={() => save()} disabled={saving}
-          className="flex-1 flex items-center justify-center gap-1 px-3 py-1.5 text-xs border disabled:opacity-40 transition-colors"
+          className="w-full flex items-center justify-center gap-1.5 px-3 py-2 text-xs border disabled:opacity-40 transition-colors"
           style={saved
             ? { background: "rgba(143,181,160,0.1)", borderColor: "#8FB5A0", color: "#8FB5A0" }
             : { background: "rgba(201,168,76,0.08)", borderColor: "#C9A84C", color: "#C9A84C" }}>
@@ -337,6 +424,10 @@ export default function AgentRegistryPage() {
   const { data: tools = [] } = useTools();
   const [showRegister, setShowRegister] = useState(false);
   const [selected, setSelected] = useState<AgentDefinition | null>(null);
+
+  function handleCloned(cloned: AgentDefinition) {
+    setSelected(cloned);
+  }
 
   return (
     <div className="flex flex-col h-full">
@@ -375,7 +466,14 @@ export default function AgentRegistryPage() {
                   selected?.name === agent.name ? "bg-accent" : "hover:bg-accent/60"
                 }`}>
                 <div>
-                  <div className="text-[13px] font-medium text-foreground">{agent.name}</div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[13px] font-medium text-foreground">{agent.name}</span>
+                    {BUILTIN_AGENTS.has(agent.name) && (
+                      <span className="text-[8px] tracking-wider px-1.5 py-0.5 border border-amber/30 text-amber bg-amber/5 rounded shrink-0">
+                        BUILTIN
+                      </span>
+                    )}
+                  </div>
                   <div className="text-[11px] text-muted-foreground/40">v{agent.version}</div>
                 </div>
                 <span className="text-[11px] px-2 py-0.5 border border-border rounded text-muted-foreground bg-background w-fit">
@@ -410,6 +508,7 @@ export default function AgentRegistryPage() {
             agent={selected}
             tools={tools}
             onClose={() => setSelected(null)}
+            onCloned={handleCloned}
           />
         )}
       </div>

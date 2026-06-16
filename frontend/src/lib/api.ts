@@ -45,7 +45,10 @@ export const api = {
       request<AgentDefinition>(`/api/v1/agents`, { method: "POST", body: JSON.stringify(body) }),
     update: (name: string, body: Partial<AgentDefinition>) =>
       request<AgentDefinition>(`/api/v1/agents/${name}`, { method: "PUT", body: JSON.stringify(body) }),
-    deactivate: (name: string) => request<void>(`/api/v1/agents/${name}`, { method: "DELETE" }),
+    deactivate:  (name: string) => request<void>(`/api/v1/agents/${name}/deactivate`,  { method: "PATCH" }),
+    reactivate:  (name: string) => request<void>(`/api/v1/agents/${name}/reactivate`,  { method: "PATCH" }),
+    delete:      (name: string) => request<void>(`/api/v1/agents/${name}`,              { method: "DELETE" }),
+    clone: (name: string) => request<AgentDefinition>(`/api/v1/agents/${name}/clone`, { method: "POST" }),
   },
 
   tools: {

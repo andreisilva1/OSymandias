@@ -59,13 +59,64 @@ async def update_agent(name: str, body: AgentDefinitionUpdate, db: AsyncSession 
     return agent
 
 
-@router.delete("/{name}", status_code=status.HTTP_204_NO_CONTENT)
+@router.patch("/{name}/deactivate", status_code=status.HTTP_204_NO_CONTENT)
 async def deactivate_agent(name: str, db: AsyncSession = Depends(get_db)):
     agent = await db.get(AgentDefinition, name)
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
     agent.is_active = False
     await db.commit()
+
+
+@router.patch("/{name}/reactivate", status_code=status.HTTP_204_NO_CONTENT)
+async def reactivate_agent(name: str, db: AsyncSession = Depends(get_db)):
+    agent = await db.get(AgentDefinition, name)
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    agent.is_active = True
+    await db.commit()
+
+
+@router.delete("/{name}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_agent(name: str, db: AsyncSession = Depends(get_db)):
+    agent = await db.get(AgentDefinition, name)
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    await db.delete(agent)
+    await db.commit()
+
+
+@router.post("/{name}/clone", response_model=AgentDefinitionResponse, status_code=status.HTTP_201_CREATED)
+async def clone_agent(name: str, db: AsyncSession = Depends(get_db)):
+    source = await db.get(AgentDefinition, name)
+    if not source:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    base = f"{name} (copy)"
+    new_name = base
+    i = 2
+    while await db.get(AgentDefinition, new_name):
+        new_name = f"{base} {i}"
+        i += 1
+
+    clone = AgentDefinition(
+        name=new_name,
+        version="1.0",
+        description=source.description,
+        role=source.role,
+        system_prompt_template=source.system_prompt_template,
+        allowed_tools=list(source.allowed_tools or []),
+        llm_provider=source.llm_provider,
+        llm_model=source.llm_model,
+        max_iterations=source.max_iterations,
+        timeout_seconds=source.timeout_seconds,
+        output_schema=source.output_schema,
+        is_active=True,
+    )
+    db.add(clone)
+    await db.commit()
+    await db.refresh(clone)
+    return clone
 
 
 @router.get("/{name}/instances", response_model=list[AgentInstanceResponse])
