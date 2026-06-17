@@ -43,3 +43,6 @@ Thumbs.db
 .vscode/
 *.swp
 *.swo
+
+# Design / dev scratch
+fut_dev/

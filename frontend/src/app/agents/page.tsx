@@ -237,7 +237,7 @@ function OutputSchemaEditor({
           <select
             value={f.type}
             onChange={(e) => update(i, { type: e.target.value })}
-            className={`${inp} text-[10px] py-0.5 h-6 w-24`}>
+            className={`${inp} text-[10px] py-0.5 h-6 w-28`}>
             {FIELD_TYPES.map((t) => <option key={t}>{t}</option>)}
           </select>
           <button

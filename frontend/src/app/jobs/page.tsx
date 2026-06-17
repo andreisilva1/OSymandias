@@ -5,22 +5,28 @@ import { useState, useMemo } from "react";
 import { useQueryClient, useMutation } from "@tanstack/react-query";
 import { useJobs } from "@/hooks/useJobData";
 import { formatRelative, formatCost, formatTokens } from "@/lib/utils";
-import { Plus, Loader2, ChevronRight, Search, ChevronLeft } from "lucide-react";
+import { Plus, Loader2, ChevronRight, ChevronLeft, Search } from "lucide-react";
 import { api } from "@/lib/api";
 import type { JobStatus } from "@/types";
 
-type Filter = JobStatus | "ALL";
-const FILTERS: Filter[] = ["ALL", "RUNNING", "PLANNING", "PENDING", "COMPLETED", "FAILED", "CANCELLED"];
 const PAGE_SIZE = 15;
 
-const DOT: Record<string, string> = {
-  RUNNING:"dot-running", PLANNING:"dot-planning", PENDING:"dot-pending",
-  WAITING:"dot-waiting", FAILED:"dot-failed", CRASHED:"dot-failed",
-  COMPLETED:"dot-completed", CANCELLED:"dot-cancelled",
+const STATUS_FILTERS = ["ALL", "RUNNING", "PLANNING", "PENDING", "COMPLETED", "FAILED", "CANCELLED"] as const;
+type Filter = (typeof STATUS_FILTERS)[number];
+
+const CARD_CLASS: Record<string, string> = {
+  RUNNING: "job-card-running", PLANNING: "job-card-planning",
+  COMPLETED: "job-card-completed", FAILED: "job-card-failed",
+  PENDING: "job-card-pending",
 };
-const COL: Record<string, string> = {
-  RUNNING:"text-green", PLANNING:"text-cyan", PENDING:"text-amber",
-  FAILED:"text-red", COMPLETED:"text-muted-foreground", CANCELLED:"text-muted-foreground",
+const DOT_CLASS: Record<string, string> = {
+  RUNNING: "dot-running", PLANNING: "dot-planning", PENDING: "dot-pending",
+  WAITING: "dot-waiting", FAILED: "dot-failed", CRASHED: "dot-failed",
+  COMPLETED: "dot-completed", CANCELLED: "dot-cancelled",
+};
+const BADGE_CLASS: Record<string, string> = {
+  RUNNING: "badge-running", PLANNING: "badge-planning", COMPLETED: "badge-completed",
+  FAILED: "badge-failed", PENDING: "badge-pending", CANCELLED: "badge-cancelled",
 };
 
 function NewProcessModal({ onClose }: { onClose: () => void }) {
@@ -32,7 +38,8 @@ function NewProcessModal({ onClose }: { onClose: () => void }) {
   const [err, setErr] = useState("");
 
   const { mutate, isPending } = useMutation({
-    mutationFn: () => api.jobs.create({ title, description: description || undefined, priority, input_payload: JSON.parse(payload) }),
+    mutationFn: () =>
+      api.jobs.create({ title, description: description || undefined, priority, input_payload: JSON.parse(payload) }),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["jobs"] }); onClose(); },
   });
 
@@ -43,9 +50,11 @@ function NewProcessModal({ onClose }: { onClose: () => void }) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70" onClick={onClose}>
-      <div className="bg-card border border-border p-6 w-[460px] rounded-[6px] shadow-2xl" onClick={(e) => e.stopPropagation()}>
-        <div className="os-label mb-5">SPAWN PROCESS</div>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={onClose}>
+      <div className="os-card p-6 w-[460px] shadow-2xl" onClick={(e) => e.stopPropagation()}>
+        <div style={{ fontSize: 15, fontWeight: 600, color: "#D8E0E8", marginBottom: 20, letterSpacing: "-0.3px" }}>
+          Spawn Process
+        </div>
         <form onSubmit={submit} className="space-y-4">
           <div>
             <label className="os-label block mb-1.5">TITLE</label>
@@ -64,21 +73,16 @@ function NewProcessModal({ onClose }: { onClose: () => void }) {
             </select>
           </div>
           <div>
-            <label className="os-label block mb-1.5">INPUT PAYLOAD <span className="text-muted-foreground/30 normal-case tracking-normal">(JSON)</span></label>
+            <label className="os-label block mb-1.5">PAYLOAD <span style={{ color: "#384858", textTransform: "none", letterSpacing: 0, fontSize: 10 }}>(JSON)</span></label>
             <textarea value={payload} onChange={(e) => { setPayload(e.target.value); setErr(""); }} rows={4}
               className={`os-input font-mono text-[12px] resize-none ${err ? "border-red-500" : ""}`} />
-            {err && <p className="text-[11px] text-red mt-1">{err}</p>}
+            {err && <p style={{ fontSize: 11, color: "#C06070", marginTop: 4 }}>{err}</p>}
           </div>
           <div className="flex justify-end gap-2 pt-1">
-            <button type="button" onClick={onClose}
-              className="px-4 py-2 text-[12px] text-muted-foreground border border-border rounded-[var(--radius)] hover:bg-accent transition-colors">
-              ESC / cancel
-            </button>
-            <button type="submit" disabled={isPending || !title.trim()}
-              className="flex items-center gap-1.5 px-4 py-2 text-[12px] rounded-[var(--radius)] border disabled:opacity-40 transition-colors"
-              style={{ background:"rgba(201,168,76,0.08)", borderColor:"#C9A84C", color:"#C9A84C" }}>
+            <button type="button" onClick={onClose} className="btn btn-ghost">cancel</button>
+            <button type="submit" disabled={isPending || !title.trim()} className="btn btn-primary" style={{ opacity: isPending || !title.trim() ? 0.4 : 1 }}>
               {isPending && <Loader2 className="w-3 h-3 animate-spin" />}
-              SPAWN
+              Spawn
             </button>
           </div>
         </form>
@@ -93,6 +97,8 @@ export default function ProcessesPage() {
   const [page, setPage] = useState(1);
   const [showModal, setShowModal] = useState(false);
   const { data: allJobs = [], isLoading } = useJobs();
+
+  const byStatus = (s: string) => allJobs.filter((j) => j.status === s).length;
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -110,124 +116,172 @@ export default function ProcessesPage() {
   function changeFilter(f: Filter) { setFilter(f); setPage(1); }
   function changeSearch(v: string) { setSearch(v); setPage(1); }
 
+  const running = byStatus("RUNNING") + byStatus("PLANNING");
+  const successRate = allJobs.length > 0
+    ? Math.round((byStatus("COMPLETED") / allJobs.length) * 100)
+    : 0;
+
   return (
     <div className="flex flex-col h-full">
       {showModal && <NewProcessModal onClose={() => setShowModal(false)} />}
 
-      {/* Header */}
-      <div className="flex items-center justify-between px-5 py-3.5 border-b border-border shrink-0">
+      {/* Topbar */}
+      <div className="page-topbar">
         <div>
-          <div className="os-label mb-0.5">KERNEL / PROCESS MANAGER</div>
-          <h1 className="text-[15px] font-semibold text-bright">Processes</h1>
+          <div className="page-title">Processes</div>
+          <div className="page-sub">Kernel process manager · {allJobs.length} total</div>
         </div>
-        <div className="flex items-center gap-3">
-          <span className="text-[12px] text-muted-foreground tabular">{filtered.length} / {allJobs.length}</span>
-          <button onClick={() => setShowModal(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-[12px] border border-border rounded-[var(--radius)] hover:border-[#C9A84C] hover:text-[#C9A84C] transition-colors">
-            <Plus className="w-3.5 h-3.5" /> SPAWN
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          {isLoading && <Loader2 className="w-3.5 h-3.5 animate-spin" style={{ color: "#607080" }} />}
+          <button onClick={() => setShowModal(true)} className="btn btn-primary">
+            <Plus style={{ width: 14, height: 14 }} />
+            Spawn
           </button>
         </div>
       </div>
 
-      {/* Filter bar */}
-      <div className="flex items-center gap-px px-5 py-2 border-b border-border shrink-0 bg-card/50">
-        {FILTERS.map((f) => {
-          const count = f === "ALL" ? allJobs.length : allJobs.filter((j) => j.status === f).length;
-          return (
-            <button key={f} onClick={() => changeFilter(f)}
-              className={`px-3 py-1.5 text-[11px] transition-colors tracking-wide rounded-sm ${
-                filter === f
-                  ? "text-foreground bg-accent border-b-2 border-[#C9A84C]"
-                  : "text-muted-foreground hover:text-foreground hover:bg-accent/40"
-              }`}>
-              {f} <span className="ml-1 opacity-40 tabular">{count}</span>
-            </button>
-          );
-        })}
-        {isLoading && <Loader2 className="w-3 h-3 animate-spin text-muted-foreground ml-2" />}
-        <div className="ml-auto flex items-center gap-1.5 border border-border rounded-[var(--radius)] px-2.5 py-1 bg-background">
-          <Search className="w-3 h-3 text-muted-foreground/40 shrink-0" />
-          <input
-            value={search}
-            onChange={(e) => changeSearch(e.target.value)}
-            placeholder="search..."
-            className="bg-transparent text-[11px] text-foreground placeholder:text-muted-foreground/30 outline-none w-36"
-          />
-        </div>
-      </div>
+      <div className="page-content">
 
-      {/* Process table */}
-      <div className="flex-1 overflow-auto">
-        {/* Column headers */}
-        <div className="grid grid-cols-[88px_1fr_110px_80px_70px_70px_80px_28px] gap-2 px-5 py-2 text-[9px] tracking-[0.1em] text-muted-foreground/30 uppercase border-b border-border sticky top-0 bg-background/95 backdrop-blur select-none">
-          <span>PID</span>
-          <span>TITLE</span>
-          <span>STATUS</span>
-          <span>PRIORITY</span>
-          <span>TOKENS</span>
-          <span>COST</span>
-          <span>AGE</span>
-          <span />
+        {/* Stat row */}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12, marginBottom: 20 }}>
+          <div className="stat-card">
+            <div className="stat-label">Total Processes</div>
+            <div className="stat-value">{allJobs.length}</div>
+          </div>
+          <div className="stat-card">
+            <div className="stat-label">Active</div>
+            <div className="stat-value" style={{ color: running > 0 ? "#60A890" : undefined }}>{running}</div>
+            <div className="stat-sub">{byStatus("RUNNING")} running · {byStatus("PLANNING")} planning</div>
+          </div>
+          <div className="stat-card">
+            <div className="stat-label">Completed</div>
+            <div className="stat-value">{byStatus("COMPLETED")}</div>
+          </div>
+          <div className="stat-card">
+            <div className="stat-label">Success Rate</div>
+            <div className="stat-value">{successRate}<span style={{ fontSize: 16, fontWeight: 400, color: "#607080" }}>%</span></div>
+            <div className={`stat-sub ${byStatus("FAILED") === 0 ? "" : "down"}`}>
+              {byStatus("FAILED")} failed
+            </div>
+          </div>
         </div>
 
-        <div className="divide-y divide-border/50">
+        {/* Filter bar */}
+        <div className="filter-bar">
+          <div className="search-wrap">
+            <Search style={{ width: 13, height: 13 }} />
+            <input
+              className="search-bar"
+              value={search}
+              onChange={(e) => changeSearch(e.target.value)}
+              placeholder="Search by title or description..."
+            />
+          </div>
+          <select
+            className="filter-select"
+            value={filter}
+            onChange={(e) => changeFilter(e.target.value as Filter)}
+          >
+            {STATUS_FILTERS.map((f) => (
+              <option key={f} value={f}>
+                {f === "ALL" ? `All (${allJobs.length})` : `${f} (${byStatus(f)})`}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {/* Job list */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
           {jobs.map((job) => (
-            <Link key={job.id} href={`/jobs/${job.id}`}
-              className="grid grid-cols-[88px_1fr_110px_80px_70px_70px_80px_28px] gap-2 px-5 py-3 hover:bg-accent/60 transition-colors items-center group">
-              <span className="pid">{job.id.slice(0, 8)}</span>
-              <div className="min-w-0">
-                <div className="text-[13px] text-foreground truncate">{job.title}</div>
-                {job.description && <div className="text-[11px] text-muted-foreground/50 truncate mt-0.5">{job.description}</div>}
+            <Link
+              key={job.id}
+              href={`/jobs/${job.id}`}
+              className={`job-card ${CARD_CLASS[job.status] ?? ""}`}
+            >
+              {/* Left: title + meta */}
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 13.5, fontWeight: 500, color: "#D8E0E8", marginBottom: 3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {job.title}
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <span className="pid">{job.id.slice(0, 8)}</span>
+                  {job.description && (
+                    <span style={{ fontSize: 11, color: "#607080", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 280 }}>
+                      {job.description}
+                    </span>
+                  )}
+                </div>
               </div>
-              <span className="flex items-center gap-1.5">
-                <span className={`dot ${DOT[job.status] ?? "dot-dim"}`} />
-                <span className={`text-[11px] ${COL[job.status] ?? "text-muted-foreground"}`}>{job.status}</span>
-              </span>
-              <span className={`text-[11px] tabular ${job.priority === "HIGH" ? "text-amber" : "text-muted-foreground"}`}>
-                {job.priority}
-              </span>
-              <span className="text-[11px] text-muted-foreground tabular font-mono">{formatTokens(job.total_tokens)}</span>
-              <span className="text-[11px] text-muted-foreground tabular font-mono">{formatCost(job.estimated_cost)}</span>
-              <span className="text-[11px] text-muted-foreground tabular">{formatRelative(job.created_at)}</span>
-              <ChevronRight className="w-3.5 h-3.5 text-muted-foreground/30 group-hover:text-muted-foreground transition-colors" />
+
+              {/* Right: meta */}
+              <div style={{ display: "flex", alignItems: "center", gap: 16, flexShrink: 0 }}>
+                {job.priority === "HIGH" && (
+                  <span style={{ fontSize: 10, fontWeight: 600, color: "#C8A040", letterSpacing: "0.05em" }}>HIGH</span>
+                )}
+                <span style={{ fontSize: 11, color: "#607080", fontVariantNumeric: "tabular-nums" }}>
+                  {formatTokens(job.total_tokens)}
+                </span>
+                <span style={{ fontSize: 11, color: "#607080", fontVariantNumeric: "tabular-nums" }}>
+                  {formatCost(job.estimated_cost)}
+                </span>
+                <span style={{ fontSize: 11, color: "#607080" }}>
+                  {formatRelative(job.created_at)}
+                </span>
+                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <span className={`dot ${DOT_CLASS[job.status] ?? "dot-dim"}`} />
+                  <span className={`status-badge ${BADGE_CLASS[job.status] ?? ""}`}>
+                    {job.status}
+                  </span>
+                </div>
+                <ChevronRight style={{ width: 14, height: 14, color: "#384858" }} />
+              </div>
             </Link>
           ))}
+
           {jobs.length === 0 && !isLoading && (
-            <div className="flex items-center justify-center py-16 text-[12px] text-muted-foreground/30">
-              no processes match filter
+            <div style={{
+              display: "flex", alignItems: "center", justifyContent: "center",
+              padding: "48px 0", fontSize: 13, color: "#607080",
+            }}>
+              No processes match the current filter.
             </div>
           )}
         </div>
-      </div>
 
-      {/* Pagination */}
-      {totalPages > 1 && (
-        <div className="flex items-center justify-between px-5 py-2.5 border-t border-border shrink-0 bg-card/50">
-          <span className="text-[11px] text-muted-foreground/40 tabular">
-            {(safePage - 1) * PAGE_SIZE + 1}–{Math.min(safePage * PAGE_SIZE, filtered.length)} of {filtered.length}
-          </span>
-          <div className="flex items-center gap-1">
-            <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={safePage === 1}
-              className="p-1 rounded-sm text-muted-foreground hover:text-foreground hover:bg-accent disabled:opacity-20 transition-colors">
-              <ChevronLeft className="w-3.5 h-3.5" />
-            </button>
-            {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => (
-              <button key={p} onClick={() => setPage(p)}
-                className={`min-w-[24px] h-6 px-1.5 text-[11px] rounded-sm transition-colors tabular ${
-                  p === safePage
-                    ? "bg-accent text-foreground border border-[#C9A84C]/40"
-                    : "text-muted-foreground hover:text-foreground hover:bg-accent/40"
-                }`}>
-                {p}
+        {/* Pagination */}
+        {totalPages > 1 && (
+          <div className="pagination">
+            <span className="page-info">
+              Showing {(safePage - 1) * PAGE_SIZE + 1}–{Math.min(safePage * PAGE_SIZE, filtered.length)} of {filtered.length}
+            </span>
+            <div className="page-btns">
+              <button
+                className="page-btn"
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                disabled={safePage === 1}
+              >
+                <ChevronLeft style={{ width: 13, height: 13 }} />
               </button>
-            ))}
-            <button onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={safePage === totalPages}
-              className="p-1 rounded-sm text-muted-foreground hover:text-foreground hover:bg-accent disabled:opacity-20 transition-colors">
-              <ChevronRight className="w-3.5 h-3.5" />
-            </button>
+              {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => (
+                <button
+                  key={p}
+                  className={`page-btn ${p === safePage ? "active" : ""}`}
+                  onClick={() => setPage(p)}
+                >
+                  {p}
+                </button>
+              ))}
+              <button
+                className="page-btn"
+                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                disabled={safePage === totalPages}
+              >
+                <ChevronRight style={{ width: 13, height: 13 }} />
+              </button>
+            </div>
           </div>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 }
