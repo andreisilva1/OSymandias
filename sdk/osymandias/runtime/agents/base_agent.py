@@ -214,7 +214,12 @@ class BaseAgent:
                 if self._detect_loop(conversation_history):
                     conversation_history.append({
                         "role": "user",
-                        "content": "Warning: You called the same tool with the same arguments multiple times. Consider a different approach or acknowledge you cannot proceed.",
+                        "content": (
+                            "Warning: You called the same tool with the same arguments multiple times. "
+                            "If you are getting errors, read the error message carefully and fix your arguments. "
+                            "Do NOT invent new tool names — only use the exact tool names you were given. "
+                            "If you cannot proceed with the available tools, output your best-effort JSON response now."
+                        ),
                     })
 
                 self._save_checkpoint(conversation_history)

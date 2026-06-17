@@ -34,10 +34,13 @@ class ToolExecutor:
             fn = get_callable(tool_name)
             import inspect
             sig = inspect.signature(fn)
-            if "session" in sig.parameters:
-                result = fn(**input_args, session=session, agent_instance_id=agent_instance_id)
+            params = sig.parameters
+            if "session" in params:
+                filtered = {k: v for k, v in input_args.items() if k in params and k not in ("session", "agent_instance_id")}
+                result = fn(**filtered, session=session, agent_instance_id=agent_instance_id)
             else:
-                result = fn(**input_args)
+                filtered = {k: v for k, v in input_args.items() if k in params}
+                result = fn(**filtered)
             return result if isinstance(result, dict) else {"result": result}
 
         except KeyError:

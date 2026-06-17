@@ -10,11 +10,12 @@ _MAX_RESULTS = 5
 
 
 @register("web_search")
-def web_search(query: str) -> dict:
-    """Search the web using DuckDuckGo and return up to 5 real results."""
+def web_search(query: str, max_results: int = _MAX_RESULTS) -> dict:
+    """Search the web using DuckDuckGo. Returns up to max_results results (default 5)."""
     try:
+        n = min(int(max_results), 10)
         with DDGS() as ddgs:
-            raw = list(ddgs.text(query, max_results=_MAX_RESULTS))
+            raw = list(ddgs.text(query, max_results=n))
 
         results = [
             {

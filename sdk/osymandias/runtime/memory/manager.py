@@ -174,6 +174,10 @@ class MemoryManager:
             point_id = entry.qdrant_point_id or uuid.uuid4()
             entry.qdrant_point_id = point_id
 
+            # Flush here so dimension errors are caught inside this try/except
+            # instead of corrupting the caller's session transaction.
+            session.flush()
+
             qc.upsert(
                 point_id=point_id,
                 vector=vector,
@@ -185,3 +189,5 @@ class MemoryManager:
             )
         except Exception as exc:
             logger.warning("Memory embed/sync failed: {} — embedding skipped", exc)
+            entry.embedding = None
+            entry.qdrant_point_id = None

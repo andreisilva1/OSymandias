@@ -11,12 +11,12 @@ MAX_CONTENT_CHARS = 4_000
 
 
 @register("read_url")
-def read_url(url: str) -> dict:
-    """Fetch a URL and return its cleaned text content."""
+def read_url(url: str, timeout_seconds: int = 20) -> dict:
+    """Fetch a URL and return its cleaned text content (up to 4000 chars)."""
     try:
         response = httpx.get(
             url,
-            timeout=20,
+            timeout=float(timeout_seconds),
             follow_redirects=True,
             headers={"User-Agent": "Mozilla/5.0 (compatible; AIOS-bot/1.0)"},
         )

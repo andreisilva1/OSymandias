@@ -61,6 +61,27 @@ def run_agent_task(self, task_id: str, agent_instance_id: str) -> None:
         task.completed_at = datetime.now(timezone.utc)
         session.flush()
 
+        # Auto-propagate task output to job memory so downstream agents
+        # can read it without the agent needing to call write_to_job_memory.
+        # Stored under task.title (e.g. "Research") and task.agent_type (e.g. "ResearchAgent").
+        # embed=True enables semantic search via search_memory.
+        try:
+            from osymandias.runtime.memory.manager import MemoryManager
+            from osymandias.runtime.models.memory_entry import MemoryScope
+            for key in {task.title, task.agent_type}:
+                if key:
+                    MemoryManager.write_sync(
+                        session=session,
+                        scope=MemoryScope.JOB,
+                        scope_id=task.job_id,
+                        key=key,
+                        value=result,
+                        embed=False,
+                    )
+            session.flush()
+        except Exception as mem_exc:
+            logger.warning("auto-propagate memory failed for task {}: {}", task_id, mem_exc)
+
         EventEmitter.emit_sync(
             session,
             "TASK_COMPLETED",

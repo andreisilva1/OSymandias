@@ -299,21 +299,20 @@ BUILTIN_AGENTS = [
             "You are a PlannerAgent. Break the job into 2-4 tasks.\n\n"
             "AGENT TYPES (copy exactly): ResearchAgent, WriterAgent, AnalystAgent, EvaluatorAgent\n\n"
             "MEMORY RULE:\n"
-            '- ResearchAgent: end description with \'Store findings to job memory key "research".\'\n'
-            '- AnalystAgent: start description with \'Read job memory key "research". \'\n'
-            '- WriterAgent: start description with \'Read job memory key "analysis". \'\n\n'
+            '- AnalystAgent: start description with \'Read job memory key "ResearchAgent". \'\n'
+            '- WriterAgent: start description with \'Read job memory key "AnalystAgent". \'\n\n'
             "DEPENDENCY RULE: if task B needs task A output, put A title in B depends_on list.\n\n"
             "Example:\n"
             '{"tasks":['
-            '{"title":"Research","description":"Research the topic. Store findings to job memory key \\"research\\".","agent_type":"ResearchAgent","depends_on":[]},'
-            '{"title":"Write Report","description":"Read job memory key \\"research\\". Write the final report.","agent_type":"WriterAgent","depends_on":["Research"]}'
+            '{"title":"Research","description":"Research the topic.","agent_type":"ResearchAgent","depends_on":[]},'
+            '{"title":"Write Report","description":"Read job memory key \\"ResearchAgent\\". Write the final report.","agent_type":"WriterAgent","depends_on":["Research"]}'
             "]}\n\n"
             "Output ONLY the JSON object. No markdown. No extra text.\n\n"
             "Job: {{job_description}}"
         ),
         "allowed_tools": [],
         "llm_provider": "ollama",
-        "llm_model": "llama3.2",
+        "llm_model": "qwen2.5:7b",
         "max_iterations": 3,
         "timeout_seconds": 60,
         "output_schema": {
@@ -344,17 +343,20 @@ BUILTIN_AGENTS = [
         "system_prompt_template": (
             "You are a ResearchAgent in an AI Operating System.\n"
             "Task: {{task_description}}\n\n"
-            "INSTRUCTIONS:\n"
-            "1. Call web_search 1-3 times maximum to gather information.\n"
-            "2. Optionally call write_to_job_memory to store key findings.\n"
-            "3. After gathering enough information, output your final answer as JSON.\n\n"
-            "IMPORTANT: You MUST end by outputting ONLY a JSON object like this:\n"
-            '{"summary": "...", "findings": {...}, "sources": [...]}\n\n'
-            "Do NOT keep calling tools indefinitely. 3 searches is the maximum."
+            "AVAILABLE TOOLS — use ONLY these exact names:\n"
+            "{{available_tools}}\n\n"
+            "YOU MUST CALL TOOLS BEFORE OUTPUTTING ANYTHING.\n\n"
+            "STEP 1: Call web_search with a relevant query. Do this now.\n"
+            "STEP 2: Call read_url on 2-3 of the most relevant URLs from the search results.\n"
+            "STEP 3: Only after completing steps 1 and 2, output a JSON object with these keys:\n"
+            "  - summary: a string with your overall summary\n"
+            "  - findings: an object with the key facts you found\n"
+            "  - sources: a list of URL strings you read\n\n"
+            "Do NOT output JSON before calling tools. Do NOT invent tool names."
         ),
         "allowed_tools": ["web_search", "read_url", "write_to_job_memory", "read_from_job_memory", "search_memory", "send_message"],
         "llm_provider": "ollama",
-        "llm_model": "llama3.2",
+        "llm_model": "qwen2.5:7b",
         "max_iterations": 8,
         "timeout_seconds": 120,
         "output_schema": {
@@ -375,17 +377,19 @@ BUILTIN_AGENTS = [
         "system_prompt_template": (
             "You are a WriterAgent in an AI Operating System.\n"
             "Task: {{task_description}}\n\n"
-            "INSTRUCTIONS:\n"
-            "1. Optionally call read_from_job_memory or search_memory once to get context.\n"
-            "2. Write the document based on the task and any retrieved context.\n"
-            "3. Output your final answer as JSON immediately after.\n\n"
-            "IMPORTANT: Output ONLY a JSON object like this:\n"
-            '{"title": "...", "content": "...", "format": "markdown"}\n\n'
-            "Do NOT call tools more than twice. Write the document from what you know."
+            "AVAILABLE TOOLS — use ONLY these exact names:\n"
+            "{{available_tools}}\n\n"
+            "STEP 1: Call read_from_job_memory with the key mentioned in your task description to get the data.\n"
+            "STEP 2: Write a well-structured document based on the retrieved data.\n"
+            "STEP 3: Output a JSON object with these keys:\n"
+            "  - title: a string title for the document\n"
+            "  - content: the full document text in markdown\n"
+            "  - format: the string 'markdown'\n\n"
+            "Do NOT output JSON before calling read_from_job_memory. Do NOT invent tool names."
         ),
         "allowed_tools": ["read_from_job_memory", "search_memory", "write_to_job_memory", "send_message"],
         "llm_provider": "ollama",
-        "llm_model": "llama3.2",
+        "llm_model": "qwen2.5:7b",
         "max_iterations": 5,
         "timeout_seconds": 120,
         "output_schema": {
@@ -405,13 +409,21 @@ BUILTIN_AGENTS = [
         "role": "analyst",
         "system_prompt_template": (
             "You are an AnalystAgent in an AI Operating System.\n"
-            "Task: {{task_description}}\n"
-            "Read the data from job memory, analyse it, and return structured insights."
+            "Task: {{task_description}}\n\n"
+            "AVAILABLE TOOLS — use ONLY these exact names:\n"
+            "{{available_tools}}\n\n"
+            "STEP 1: Call read_from_job_memory with key \"ResearchAgent\" to retrieve the research data.\n"
+            "   If that returns nothing, try key \"research\" or key \"Research\".\n"
+            "STEP 2: Analyse the retrieved data thoroughly — identify key trends, patterns, and conclusions.\n"
+            "STEP 3: Output a JSON object with these keys:\n"
+            "  - insights: a list of strings, each describing a key insight from the data\n"
+            "  - data: an object containing structured data extracted from the research\n\n"
+            "Do NOT output JSON before calling read_from_job_memory. Do NOT invent tool names."
         ),
         "allowed_tools": ["read_from_job_memory", "search_memory", "write_to_job_memory", "send_message"],
         "llm_provider": "ollama",
-        "llm_model": "llama3.2",
-        "max_iterations": 15,
+        "llm_model": "qwen2.5:7b",
+        "max_iterations": 6,
         "timeout_seconds": 120,
         "output_schema": {
             "type": "object",
@@ -430,13 +442,15 @@ BUILTIN_AGENTS = [
         "system_prompt_template": (
             "You are an EvaluatorAgent in an AI Operating System.\n"
             "Output to evaluate: {{output}}\n"
-            "Acceptance criteria: {{criteria}}\n"
-            "Score the output from 0.0 to 1.0 and provide feedback.\n"
-            "Return JSON with 'score' (float) and 'feedback' (string)."
+            "Acceptance criteria: {{criteria}}\n\n"
+            "Score the output from 0.0 to 1.0 and provide concise feedback.\n"
+            "Set 'passed' to true if score >= 0.7, false otherwise.\n\n"
+            "Output ONLY this JSON — no markdown, no explanation:\n"
+            '{"score": 0.0, "feedback": "...", "passed": false}'
         ),
         "allowed_tools": [],
         "llm_provider": "ollama",
-        "llm_model": "llama3.2",
+        "llm_model": "qwen2.5:7b",
         "max_iterations": 3,
         "timeout_seconds": 60,
         "output_schema": {
@@ -469,6 +483,8 @@ async def seed():
                 existing.allowed_tools = agent_data["allowed_tools"]
                 existing.llm_provider = agent_data["llm_provider"]
                 existing.llm_model = agent_data["llm_model"]
+                existing.max_iterations = agent_data["max_iterations"]
+                existing.timeout_seconds = agent_data["timeout_seconds"]
 
         await session.commit()
     logger.info("Seed complete.")

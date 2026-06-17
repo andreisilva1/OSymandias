@@ -90,7 +90,30 @@ class ContextBuilder:
             template
             .replace("{{task_description}}", task.description or task.title)
             .replace("{{job_context}}", f"Job ID: {self.job_id}")
+            .replace("{{available_tools}}", self._build_tools_block())
         )
+
+    def _build_tools_block(self) -> str:
+        if not self.definition.allowed_tools:
+            return "(none)"
+        from osymandias.runtime.models import ToolDefinition
+        lines = []
+        for tool_name in self.definition.allowed_tools:
+            td = self.session.get(ToolDefinition, tool_name)
+            if not td or not td.is_active:
+                continue
+            props = (td.input_schema or {}).get("properties", {})
+            required = set((td.input_schema or {}).get("required", []))
+            params = []
+            for pname, pschema in props.items():
+                if pname in required:
+                    params.append(pname)
+                else:
+                    default = pschema.get("default", "")
+                    params.append(f"{pname}={default!r}" if default != "" else pname)
+            sig = f"{td.name}({', '.join(params)})"
+            lines.append(f"- {sig} — {td.description}")
+        return "\n".join(lines) if lines else "(none)"
 
     def _load_mailbox(self) -> list[dict[str, Any]]:
         messages = self.session.scalars(
