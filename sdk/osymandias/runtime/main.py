@@ -1,10 +1,7 @@
-import os
 from contextlib import asynccontextmanager
-from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
 
 from osymandias.runtime.observability.logging import setup_logging
 
@@ -49,32 +46,3 @@ app.include_router(providers.router)
 @app.get("/health")
 async def health():
     return {"status": "ok"}
-
-
-# ─── Static frontend (SPA catch-all) ─────────────────────────────────────────
-
-def _resolve_frontend() -> Path | None:
-    env_dir = os.environ.get("OSY_FRONTEND_DIR")
-    if env_dir:
-        p = Path(env_dir)
-        if p.exists():
-            return p
-    try:
-        import osymandias
-        candidate = Path.home() / ".osy" / "cache" / osymandias.__version__ / "frontend"
-        if candidate.exists():
-            return candidate
-    except Exception:
-        pass
-    return None
-
-
-_FRONTEND_DIR = _resolve_frontend()
-
-if _FRONTEND_DIR:
-    @app.get("/{full_path:path}", include_in_schema=False)
-    async def serve_spa(full_path: str):
-        file = _FRONTEND_DIR / full_path
-        if file.is_file():
-            return FileResponse(file)
-        return FileResponse(_FRONTEND_DIR / "index.html")

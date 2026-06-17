@@ -60,6 +60,23 @@ def ensure_frontend() -> Path:
     return fdir
 
 
+def nginx_conf_cache_path() -> Path:
+    return cache_dir() / "OSY.nginx.conf"
+
+
+def ensure_nginx_conf(local: Path) -> Path:
+    if local.exists():
+        return local
+    cached = nginx_conf_cache_path()
+    if cached.exists():
+        return cached
+    url = f"{GITHUB_RAW}/{_tag()}/OSY.nginx.conf"
+    _download_text(url, local)
+    import shutil
+    shutil.copy2(local, cached)
+    return local
+
+
 def ensure_compose(local: Path) -> Path:
     if local.exists():
         return local

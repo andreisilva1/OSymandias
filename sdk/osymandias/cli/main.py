@@ -19,10 +19,12 @@ app = typer.Typer(
 console = Console()
 
 COMPOSE_FILENAME = "OSY.compose.yml"
+NGINX_CONF_FILENAME = "OSY.nginx.conf"
 ENV_FILENAME = ".env"
-TOOLS_FILENAME = "tools.py"
-TOOL_SERVER_PORT = 8001
-RUNTIME_PORT = 3000
+TOOLS_FILENAME = "osy_tools.py"
+TOOL_SERVER_PORT = 47761   # internal tool server
+RUNTIME_PORT     = 47760   # FastAPI
+FRONTEND_PORT    = 47759   # nginx
 
 
 # ─── osy init ────────────────────────────────────────────────────────────────
@@ -37,8 +39,8 @@ def init():
     # LLM provider
     provider = Prompt.ask(
         "LLM provider",
-        choices=["openai", "anthropic", "ollama", "deepseek", "groq", "gemini"],
-        default="openai",
+        choices=["ollama", "openai", "anthropic", "deepseek", "groq", "gemini"],
+        default="ollama",
     )
 
     api_key = ""
@@ -61,7 +63,7 @@ def init():
         api_key = Prompt.ask("Gemini API key", password=True)
         model = "gemini/gemini-1.5-flash"
 
-    # Fetch OSY.compose.yml from GitHub
+    # Fetch OSY.compose.yml
     compose_dest = cwd / COMPOSE_FILENAME
     if compose_dest.exists():
         console.print(f"[yellow]↳ {COMPOSE_FILENAME} already exists, skipping[/yellow]")
@@ -73,9 +75,23 @@ def init():
             console.print(f"[green]✓[/green] {COMPOSE_FILENAME} created")
         except Exception as exc:
             console.print(f"[yellow]⚠ Could not fetch from GitHub: {exc}[/yellow]")
-            console.print("[dim]  Using bundled fallback.[/dim]")
             _write_fallback_compose(compose_dest)
             console.print(f"[green]✓[/green] {COMPOSE_FILENAME} created (fallback)")
+
+    # Fetch OSY.nginx.conf
+    nginx_dest = cwd / NGINX_CONF_FILENAME
+    if nginx_dest.exists():
+        console.print(f"[yellow]↳ {NGINX_CONF_FILENAME} already exists, skipping[/yellow]")
+    else:
+        console.print(f"[dim]↓ Fetching {NGINX_CONF_FILENAME} from GitHub...[/dim]")
+        try:
+            from osymandias.assets import ensure_nginx_conf
+            ensure_nginx_conf(nginx_dest)
+            console.print(f"[green]✓[/green] {NGINX_CONF_FILENAME} created")
+        except Exception as exc:
+            console.print(f"[yellow]⚠ Could not fetch nginx config: {exc}[/yellow]")
+            _write_fallback_nginx_conf(nginx_dest)
+            console.print(f"[green]✓[/green] {NGINX_CONF_FILENAME} created (fallback)")
 
     # Write .env
     env_dest = cwd / ENV_FILENAME
@@ -125,25 +141,33 @@ def serve():
     # 3. Resolve OSY.compose.yml
     compose_path = _resolve_compose(cwd)
 
-    # 4. Ensure frontend cache
-    console.print("[dim]↓ Checking frontend cache...[/dim]")
-    try:
-        from osymandias.assets import ensure_frontend
-        frontend_dir = ensure_frontend()
-        console.print(f"[dim]✓ Frontend ready ({frontend_dir})[/dim]")
-    except Exception as exc:
-        console.print(f"[yellow]⚠ Could not fetch frontend: {exc}[/yellow]")
-        console.print("[dim]  Dashboard may not be available.[/dim]")
-        frontend_dir = None
+    # 4. Resolve frontend + nginx for Docker
+    import os as _os
+    compose_env = {**_os.environ}
+    frontend_dir = _resolve_frontend_dir(cwd)
+    with_frontend = False
+    if frontend_dir:
+        nginx_conf = _resolve_nginx_conf(cwd)
+        if nginx_conf:
+            compose_env["OSY_FRONTEND_DIR"] = str(frontend_dir)
+            compose_env["OSY_NGINX_CONF"]   = str(nginx_conf)
+            with_frontend = True
+            console.print(f"[dim]✓ Frontend ready → http://localhost:{FRONTEND_PORT}[/dim]")
+        else:
+            console.print(f"[yellow]⚠ {NGINX_CONF_FILENAME} not found — dashboard unavailable[/yellow]")
+    else:
+        console.print(f"[yellow]⚠ No frontend build — run [cyan]npm run dev[/cyan] in frontend/ for the dashboard[/yellow]")
 
-    # 5. Start infra
+    # 5. Start infra (+ nginx if frontend available)
     console.print("[dim]↓ Starting infrastructure...[/dim]")
-    subprocess.run(
-        ["docker", "compose", "-f", str(compose_path), "up", "-d"],
-        check=True,
-    )
+    compose_cmd = ["docker", "compose", "-f", str(compose_path)]
+    if with_frontend:
+        compose_cmd += ["--profile", "frontend"]
+    compose_cmd += ["up", "-d"]
+    subprocess.run(compose_cmd, env=compose_env, check=True)
     _wait_healthy(compose_path)
-    console.print("[green]✓[/green] Infrastructure  [dim]postgres · redis · rabbitmq · qdrant[/dim]")
+    infra_note = "postgres · redis · rabbitmq · qdrant" + (" · nginx" if with_frontend else "")
+    console.print(f"[green]✓[/green] Infrastructure  [dim]{infra_note}[/dim]")
 
     # 6. Run migrations
     console.print("[dim]↓ Running database migrations...[/dim]")
@@ -169,18 +193,13 @@ def serve():
     _register_tools_in_db(_TOOL_REGISTRY)
 
     # 10. Start FastAPI runtime
-    import os
-    runtime_env = {}
-    if frontend_dir:
-        runtime_env["OSY_FRONTEND_DIR"] = str(frontend_dir)
-
     manager.start("api", [
         sys.executable, "-m", "uvicorn",
         "osymandias.runtime.main:app",
         "--host", "0.0.0.0",
         "--port", str(RUNTIME_PORT),
         "--log-level", "warning",
-    ], env=runtime_env)
+    ])
 
     # 11. Start Celery workers
     pool = "solo" if sys.platform == "win32" else "prefork"
@@ -196,7 +215,10 @@ def serve():
     time.sleep(2)
     console.print(f"\n[green]✓[/green] Tool server    [cyan]http://localhost:{TOOL_SERVER_PORT}[/cyan]  [dim]({len(_TOOL_REGISTRY)} tools)[/dim]")
     console.print(f"[green]✓[/green] Runtime API    [cyan]http://localhost:{RUNTIME_PORT}/api/v1[/cyan]")
-    console.print(f"[green]✓[/green] Dashboard      [cyan]http://localhost:{RUNTIME_PORT}[/cyan]")
+    if with_frontend:
+        console.print(f"[green]✓[/green] Dashboard      [cyan]http://localhost:{FRONTEND_PORT}[/cyan]")
+    else:
+        console.print(f"[dim]  Dashboard: cd frontend && npm run dev[/dim]")
     console.print("\n[dim]Press Ctrl+C to stop.[/dim]\n")
 
     manager.wait_all()
@@ -206,20 +228,45 @@ def serve():
 
 @app.command()
 def stop():
-    """Stop the Docker infrastructure."""
-    cwd = Path.cwd()
-    compose_path = cwd / COMPOSE_FILENAME
-    if not compose_path.exists():
-        from osymandias.assets import compose_cache_path
-        compose_path = compose_cache_path()
-
-    if not compose_path.exists():
-        console.print("[red]No OSY.compose.yml found. Nothing to stop.[/red]")
-        raise typer.Exit(1)
-
+    """Pause the Docker infrastructure (containers stay, data preserved)."""
+    compose_path = _find_compose()
     console.print("[dim]Stopping infrastructure...[/dim]")
     subprocess.run(["docker", "compose", "-f", str(compose_path), "stop"], check=False)
-    console.print("[green]✓[/green] Infrastructure stopped.")
+    console.print("[green]✓[/green] Infrastructure stopped.  Data preserved.")
+
+
+# ─── osy down ────────────────────────────────────────────────────────────────
+
+@app.command()
+def down():
+    """Remove containers but keep volumes (data preserved)."""
+    compose_path = _find_compose()
+    console.print("[dim]Bringing down containers...[/dim]")
+    subprocess.run(["docker", "compose", "-f", str(compose_path), "down"], check=False)
+    console.print("[green]✓[/green] Containers removed.  Volumes preserved.")
+
+
+# ─── osy delete ──────────────────────────────────────────────────────────────
+
+@app.command()
+def delete():
+    """Remove containers AND volumes — all data will be lost. Asks for confirmation."""
+    compose_path = _find_compose()
+
+    console.print("[bold red]WARNING:[/bold red] This will permanently delete all OSymandias data.")
+    console.print("[dim]  Volumes: osy_postgres · osy_redis · osy_rabbitmq · osy_qdrant[/dim]\n")
+
+    confirm = typer.prompt("Type  delete  to confirm")
+    if confirm.strip() != "delete":
+        console.print("[yellow]Aborted.[/yellow]")
+        raise typer.Exit(0)
+
+    console.print("[dim]Removing containers and volumes...[/dim]")
+    subprocess.run(
+        ["docker", "compose", "-f", str(compose_path), "down", "--volumes", "--remove-orphans"],
+        check=False,
+    )
+    console.print("[green]✓[/green] Containers and volumes removed.")
 
 
 # ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -233,18 +280,47 @@ def _require_docker() -> None:
         raise typer.Exit(1)
 
 
-def _resolve_compose(cwd: Path) -> Path:
-    local = cwd / COMPOSE_FILENAME
+def _find_compose() -> Path:
+    """Locate OSY.compose.yml: local dir → ~/.osy cache. Exits if not found."""
+    local = Path.cwd() / COMPOSE_FILENAME
     if local.exists():
         return local
-
-    from osymandias.assets import ensure_compose
     try:
-        return ensure_compose(local)
-    except Exception as exc:
-        console.print(f"[red]✗ Could not resolve {COMPOSE_FILENAME}: {exc}[/red]")
-        console.print("  Run [cyan]osy init[/cyan] first.")
-        raise typer.Exit(1)
+        from osymandias.assets import compose_cache_path
+        cached = compose_cache_path()
+        if cached.exists():
+            return cached
+    except Exception:
+        pass
+    console.print(f"[red]✗ {COMPOSE_FILENAME} not found.[/red]")
+    console.print("  Run [cyan]osy init[/cyan] first.")
+    raise typer.Exit(1)
+
+
+def _resolve_compose(cwd: Path) -> Path:
+    return _find_compose()
+
+
+def _resolve_frontend_dir(cwd: Path) -> "Path | None":
+    try:
+        from osymandias.assets import ensure_frontend
+        return ensure_frontend()
+    except Exception:
+        pass
+    local_out = cwd / "frontend" / "out"
+    if local_out.exists() and any(local_out.iterdir()):
+        return local_out
+    return None
+
+
+def _resolve_nginx_conf(cwd: Path) -> "Path | None":
+    local = cwd / NGINX_CONF_FILENAME
+    try:
+        from osymandias.assets import ensure_nginx_conf
+        return ensure_nginx_conf(local)
+    except Exception:
+        pass
+    return local if local.exists() else None
 
 
 def _wait_healthy(compose_path: Path, timeout: int = 90) -> None:
@@ -325,17 +401,63 @@ REDIS_URL=redis://localhost:6379/0
 RABBITMQ_URL=amqp://guest:guest@localhost:5672/
 QDRANT_URL=http://localhost:6333
 
-# CORS
-CORS_ORIGINS=http://localhost:{RUNTIME_PORT}
+# CORS (frontend on {FRONTEND_PORT}, direct API access on {RUNTIME_PORT})
+CORS_ORIGINS=http://localhost:{FRONTEND_PORT},http://localhost:{RUNTIME_PORT}
 
 # Tool server (internal)
 TOOL_SERVER_URL=http://localhost:{TOOL_SERVER_PORT}
 """, encoding="utf-8")
 
 
+def _write_fallback_nginx_conf(dest: Path) -> None:
+    dest.write_text(f"""\
+server {{
+    listen 80;
+    root /usr/share/nginx/html;
+    charset utf-8;
+
+    location ~ ^/api/v1/jobs/.+/events {{
+        proxy_pass http://host.docker.internal:{RUNTIME_PORT};
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+        proxy_buffering off;
+        proxy_cache off;
+        proxy_read_timeout 3600s;
+    }}
+
+    location /api/ {{
+        proxy_pass http://host.docker.internal:{RUNTIME_PORT}/api/;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+    }}
+
+    location /health {{
+        proxy_pass http://host.docker.internal:{RUNTIME_PORT}/health;
+    }}
+
+    location / {{
+        try_files $uri $uri.html $uri/ /index.html;
+    }}
+}}
+""", encoding="utf-8")
+
+
 def _write_fallback_compose(dest: Path) -> None:
-    dest.write_text("""\
+    dest.write_text(f"""\
 services:
+  nginx:
+    image: nginx:alpine
+    profiles: ["frontend"]
+    ports:
+      - "{FRONTEND_PORT}:80"
+    volumes:
+      - ${{OSY_FRONTEND_DIR}}:/usr/share/nginx/html:ro
+      - ${{OSY_NGINX_CONF}}:/etc/nginx/conf.d/default.conf:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
+
   postgres:
     image: pgvector/pgvector:pg16
     environment:
@@ -387,6 +509,11 @@ volumes:
 
 def _write_sample_tools(dest: Path) -> None:
     dest.write_text("""\
+# osy_tools.py — sample file generated by `osy init`
+#
+# This file is just a starting point. You can define @osy.tool functions
+# anywhere in your project — osy serve scans all .py files automatically.
+
 from osymandias import osy
 
 
@@ -394,9 +521,4 @@ from osymandias import osy
 def hello(name: str) -> dict:
     \"\"\"Return a greeting for the given name.\"\"\"
     return {"message": f"Hello, {name}!"}
-
-
-# Add your own tools below.
-# Any function decorated with @osy.tool is automatically
-# discovered and registered when you run `osy serve`.
 """, encoding="utf-8")
