@@ -12,12 +12,12 @@
 ```bash
 cd backend
 cp ../.env.example .env  # edit as needed
-docker compose -f ../docker-compose.yml up -d
+docker compose -f ../OSY.compose.yml up -d
 pip install -e ".[dev]"
-uvicorn aios.main:app --reload --port 8000
+uvicorn aios.main:app --reload --port 47760
 ```
 
-API docs: http://localhost:8000/docs
+API docs: http://localhost:47760/docs
 
 ## Structure
 

@@ -26,7 +26,7 @@ osy init
 osy serve
 ```
 
-That's it. PostgreSQL, Redis, RabbitMQ, Qdrant — managed internally via Docker. Dashboard at `localhost:3000`. Four Celery workers ready.
+That's it. PostgreSQL, Redis, RabbitMQ, Qdrant — managed internally via Docker. Dashboard at `localhost:47759`. Four Celery workers ready.
 
 Your Python functions become agent tools with a single decorator:
 
@@ -63,26 +63,29 @@ Jobs are decomposed into tasks by a PlannerAgent. Tasks execute in parallel acro
 ```bash
 pip install osymandias
 
-# Generate OSY.compose.yml + .env + sample tools.py
+# Generate OSY.compose.yml + OSY.nginx.conf + .env + sample osy_tools.py
 osy init
 
 # Start everything
 osy serve
 ```
 
-Open [http://localhost:3000](http://localhost:3000).
+Open [http://localhost:47759](http://localhost:47759) — dashboard.  
+API directly at [http://localhost:47760/api/v1](http://localhost:47760/api/v1).
 
-To stop:
+To manage the runtime:
 
 ```bash
-osy stop
+osy stop    # pause containers, keep data
+osy down    # remove containers, keep volumes
+osy delete  # remove containers + volumes (asks for confirmation)
 ```
 
 ---
 
 ## Adding your own tools
 
-Edit `tools.py` (created by `osy init`):
+Define `@osy.tool` functions anywhere in your project — `osy serve` scans all `.py` files automatically. `osy_tools.py` (created by `osy init`) is just a starting point:
 
 ```python
 from osymandias import osy
@@ -100,7 +103,7 @@ def send_slack_message(channel: str, text: str) -> dict:
     return {"ok": True}
 ```
 
-Restart `osy serve` — tools are discovered and registered automatically. Assign them to agents from the dashboard (`/tools`).
+Restart `osy serve` — any `.py` file in your project that imports `osymandias` is scanned and tools are registered automatically. Assign them to agents from the dashboard (`/tools`).
 
 ---
 
@@ -108,7 +111,7 @@ Restart `osy serve` — tools are discovered and registered automatically. Assig
 
 | | What | How |
 |---|---|---|
-| **Built-in** | `web_search`, `fetch_url`, `extract_text`, `write_to_memory` | Zero config — always available |
+| **Built-in** | `web_search`, `read_url`, `http_request`, `write_to_job_memory`, `search_memory`, `python_eval`, `run_shell`, `read_file`, `write_file`, `send_message`, `spawn_agent` … (20 total) | Zero config — always available |
 | **`@osy.tool`** | Your Python functions | Decorate + `osy serve` |
 | **Webhook** | Any HTTP endpoint | Register URL in the dashboard |
 
@@ -131,12 +134,12 @@ Restart `osy serve` — tools are discovered and registered automatically. Assig
 ## Spawning a job via API
 
 ```bash
-curl -X POST http://localhost:3000/api/v1/jobs \
+curl -X POST http://localhost:47760/api/v1/jobs \
   -H "Content-Type: application/json" \
   -d '{"title":"My Job","description":"Research the EV market in Europe in 2024.","priority":"NORMAL","input_payload":{}}'
 ```
 
-Full API reference: **http://localhost:3000/api/v1/docs**
+Full API reference: **http://localhost:47760/api/v1/docs**
 
 ---
 
@@ -186,9 +189,16 @@ cd OSymandias
 # Install the sdk in editable mode
 pip install -e ./sdk
 
-# Run osy init + osy serve as usual
+# Scaffold config files
 osy init
+
+# Start infra + API (the local frontend/out build is picked up automatically)
 osy serve
+
+# For live frontend development (separate terminal)
+cd frontend
+npm install
+npm run dev   # http://localhost:3000 — hot reload
 ```
 
 ---
