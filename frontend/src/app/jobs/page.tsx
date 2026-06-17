@@ -1,16 +1,17 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useQueryClient, useMutation } from "@tanstack/react-query";
 import { useJobs } from "@/hooks/useJobData";
 import { formatRelative, formatCost, formatTokens } from "@/lib/utils";
-import { Plus, Loader2, ChevronRight } from "lucide-react";
+import { Plus, Loader2, ChevronRight, Search, ChevronLeft } from "lucide-react";
 import { api } from "@/lib/api";
 import type { JobStatus } from "@/types";
 
 type Filter = JobStatus | "ALL";
 const FILTERS: Filter[] = ["ALL", "RUNNING", "PLANNING", "PENDING", "COMPLETED", "FAILED", "CANCELLED"];
+const PAGE_SIZE = 15;
 
 const DOT: Record<string, string> = {
   RUNNING:"dot-running", PLANNING:"dot-planning", PENDING:"dot-pending",
@@ -88,9 +89,26 @@ function NewProcessModal({ onClose }: { onClose: () => void }) {
 
 export default function ProcessesPage() {
   const [filter, setFilter] = useState<Filter>("ALL");
+  const [search, setSearch] = useState("");
+  const [page, setPage] = useState(1);
   const [showModal, setShowModal] = useState(false);
   const { data: allJobs = [], isLoading } = useJobs();
-  const jobs = filter === "ALL" ? allJobs : allJobs.filter((j) => j.status === filter);
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return allJobs.filter((j) => {
+      if (filter !== "ALL" && j.status !== filter) return false;
+      if (q && !j.title.toLowerCase().includes(q) && !(j.description ?? "").toLowerCase().includes(q)) return false;
+      return true;
+    });
+  }, [allJobs, filter, search]);
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const safePage = Math.min(page, totalPages);
+  const jobs = filtered.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
+
+  function changeFilter(f: Filter) { setFilter(f); setPage(1); }
+  function changeSearch(v: string) { setSearch(v); setPage(1); }
 
   return (
     <div className="flex flex-col h-full">
@@ -103,7 +121,7 @@ export default function ProcessesPage() {
           <h1 className="text-[15px] font-semibold text-bright">Processes</h1>
         </div>
         <div className="flex items-center gap-3">
-          <span className="text-[12px] text-muted-foreground tabular">{allJobs.length} total</span>
+          <span className="text-[12px] text-muted-foreground tabular">{filtered.length} / {allJobs.length}</span>
           <button onClick={() => setShowModal(true)}
             className="flex items-center gap-1.5 px-3 py-1.5 text-[12px] border border-border rounded-[var(--radius)] hover:border-[#C9A84C] hover:text-[#C9A84C] transition-colors">
             <Plus className="w-3.5 h-3.5" /> SPAWN
@@ -116,7 +134,7 @@ export default function ProcessesPage() {
         {FILTERS.map((f) => {
           const count = f === "ALL" ? allJobs.length : allJobs.filter((j) => j.status === f).length;
           return (
-            <button key={f} onClick={() => setFilter(f)}
+            <button key={f} onClick={() => changeFilter(f)}
               className={`px-3 py-1.5 text-[11px] transition-colors tracking-wide rounded-sm ${
                 filter === f
                   ? "text-foreground bg-accent border-b-2 border-[#C9A84C]"
@@ -127,6 +145,15 @@ export default function ProcessesPage() {
           );
         })}
         {isLoading && <Loader2 className="w-3 h-3 animate-spin text-muted-foreground ml-2" />}
+        <div className="ml-auto flex items-center gap-1.5 border border-border rounded-[var(--radius)] px-2.5 py-1 bg-background">
+          <Search className="w-3 h-3 text-muted-foreground/40 shrink-0" />
+          <input
+            value={search}
+            onChange={(e) => changeSearch(e.target.value)}
+            placeholder="search..."
+            className="bg-transparent text-[11px] text-foreground placeholder:text-muted-foreground/30 outline-none w-36"
+          />
+        </div>
       </div>
 
       {/* Process table */}
@@ -172,6 +199,35 @@ export default function ProcessesPage() {
           )}
         </div>
       </div>
+
+      {/* Pagination */}
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between px-5 py-2.5 border-t border-border shrink-0 bg-card/50">
+          <span className="text-[11px] text-muted-foreground/40 tabular">
+            {(safePage - 1) * PAGE_SIZE + 1}–{Math.min(safePage * PAGE_SIZE, filtered.length)} of {filtered.length}
+          </span>
+          <div className="flex items-center gap-1">
+            <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={safePage === 1}
+              className="p-1 rounded-sm text-muted-foreground hover:text-foreground hover:bg-accent disabled:opacity-20 transition-colors">
+              <ChevronLeft className="w-3.5 h-3.5" />
+            </button>
+            {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => (
+              <button key={p} onClick={() => setPage(p)}
+                className={`min-w-[24px] h-6 px-1.5 text-[11px] rounded-sm transition-colors tabular ${
+                  p === safePage
+                    ? "bg-accent text-foreground border border-[#C9A84C]/40"
+                    : "text-muted-foreground hover:text-foreground hover:bg-accent/40"
+                }`}>
+                {p}
+              </button>
+            ))}
+            <button onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={safePage === totalPages}
+              className="p-1 rounded-sm text-muted-foreground hover:text-foreground hover:bg-accent disabled:opacity-20 transition-colors">
+              <ChevronRight className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
