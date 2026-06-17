@@ -1,5 +1,17 @@
 services:
 
+  nginx:
+    image: nginx:alpine
+    profiles: ["frontend"]
+    ports:
+      - "47759:80"
+    volumes:
+      - ${OSY_FRONTEND_DIR}:/usr/share/nginx/html:ro
+      - ${OSY_NGINX_CONF}:/etc/nginx/conf.d/default.conf:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
+
   postgres:
     image: pgvector/pgvector:pg16
     environment:
