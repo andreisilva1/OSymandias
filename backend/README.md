@@ -3,7 +3,7 @@
 > **Legacy standalone backend** — kept for reference and direct development.
 >
 > The production path is now `sdk/osymandias/runtime/` (code adapted from here).
-> To run OSymandias as an end user, use `pip install osymandias && osy serve`.
+> To run OSymandias as an end user, use `pip install osymandias && osy init && osy serve`.
 
 ---
 
