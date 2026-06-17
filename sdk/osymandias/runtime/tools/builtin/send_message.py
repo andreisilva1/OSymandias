@@ -62,7 +62,7 @@ def send_message(
         session.flush()
 
         # Notify via Redis pub/sub
-        r = _redis.from_url(settings.redis_url, decode_responses=True)
+        r = _redis.from_url(settings.osy_redis_url, decode_responses=True)
         channel = f"mailbox:{to}:{sender.job_id}"
         r.publish(channel, json.dumps({
             "message_id": str(msg.id),

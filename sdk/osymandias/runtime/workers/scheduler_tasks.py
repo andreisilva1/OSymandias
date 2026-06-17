@@ -27,7 +27,7 @@ from osymandias.runtime.workers.celery_app import celery_app
 # dispatch_job
 # ---------------------------------------------------------------------------
 
-@celery_app.task(name="aios.workers.scheduler_tasks.dispatch_job", bind=True, max_retries=3)
+@celery_app.task(name="osymandias.runtime.workers.scheduler_tasks.dispatch_job", bind=True, max_retries=3)
 def dispatch_job(self, job_id: str) -> None:
     """Entry point for a new job. Transitions to PLANNING and spawns PlannerAgent."""
     session = get_sync_session()
@@ -77,7 +77,7 @@ def dispatch_job(self, job_id: str) -> None:
 # resolve_dag
 # ---------------------------------------------------------------------------
 
-@celery_app.task(name="aios.workers.scheduler_tasks.resolve_dag", bind=True)
+@celery_app.task(name="osymandias.runtime.workers.scheduler_tasks.resolve_dag", bind=True)
 def resolve_dag(self, job_id: str) -> None:
     """
     After any task completes, scan the DAG for newly unblocked tasks.
@@ -173,7 +173,7 @@ def _mark_ready_and_dispatch(session, task: Task, job: Job) -> None:
 # dispatch_task
 # ---------------------------------------------------------------------------
 
-@celery_app.task(name="aios.workers.scheduler_tasks.dispatch_task", bind=True, max_retries=3)
+@celery_app.task(name="osymandias.runtime.workers.scheduler_tasks.dispatch_task", bind=True, max_retries=3)
 def dispatch_task(self, task_id: str) -> None:
     """Assign a READY task to an AgentInstance and enqueue run_agent_task."""
     session = get_sync_session()

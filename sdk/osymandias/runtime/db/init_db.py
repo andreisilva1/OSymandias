@@ -1,6 +1,6 @@
 """
 Seeds AgentDefinitions and ToolDefinitions on first startup.
-Run via: python -m aios.db.init_db
+Run via: python -m osymandias.runtime.db.init_db
 """
 import asyncio
 

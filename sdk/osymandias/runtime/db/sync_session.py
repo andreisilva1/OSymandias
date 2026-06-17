@@ -5,7 +5,7 @@ from sqlalchemy.orm import sessionmaker, Session
 from osymandias.runtime.config import settings
 
 # Convert asyncpg URL to psycopg2-compatible URL for sync engine
-_sync_url = settings.postgres_url.replace("postgresql+asyncpg://", "postgresql+psycopg2://")
+_sync_url = settings.osy_postgres_url.replace("postgresql+asyncpg://", "postgresql+psycopg2://")
 
 _engine = create_engine(_sync_url, pool_pre_ping=True, pool_size=5, max_overflow=10)
 

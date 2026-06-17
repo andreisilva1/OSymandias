@@ -202,7 +202,7 @@ async def stream_job_events(job_id: uuid.UUID):
     """SSE endpoint — streams events for a specific job in real time."""
 
     async def event_generator():
-        r = aioredis.from_url(settings.redis_url, decode_responses=True)
+        r = aioredis.from_url(settings.osy_redis_url, decode_responses=True)
         pubsub = r.pubsub()
         await pubsub.subscribe(f"events:job:{job_id}")
 

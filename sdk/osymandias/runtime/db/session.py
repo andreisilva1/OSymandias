@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from osymandias.runtime.config import settings
 
 engine = create_async_engine(
-    settings.postgres_url,
+    settings.osy_postgres_url,
     echo=False,
     pool_pre_ping=True,
     pool_size=10,

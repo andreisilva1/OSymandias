@@ -27,7 +27,7 @@ _client: QdrantClient | None = None
 def get_client() -> QdrantClient:
     global _client
     if _client is None:
-        _client = QdrantClient(url=settings.qdrant_url)
+        _client = QdrantClient(url=settings.osy_qdrant_url)
         _ensure_collection(_client)
     return _client
 

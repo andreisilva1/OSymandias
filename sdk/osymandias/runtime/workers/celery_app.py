@@ -4,15 +4,15 @@ from kombu import Exchange, Queue
 from osymandias.runtime.config import settings
 
 celery_app = Celery(
-    "aios",
-    broker=settings.rabbitmq_url,
-    backend=settings.redis_url,
+    "osymandias",
+    broker=settings.osy_rabbitmq_url,
+    backend=settings.osy_redis_url,
     include=[
-        "aios.workers.scheduler_tasks",
-        "aios.workers.agent_tasks",
-        "aios.workers.tool_tasks",
-        "aios.workers.evaluator_tasks",
-        "aios.workers.beat_tasks",
+        "osymandias.runtime.workers.scheduler_tasks",
+        "osymandias.runtime.workers.agent_tasks",
+        "osymandias.runtime.workers.tool_tasks",
+        "osymandias.runtime.workers.evaluator_tasks",
+        "osymandias.runtime.workers.beat_tasks",
     ],
 )
 
@@ -20,7 +20,7 @@ celery_app = Celery(
 # Queue definitions
 # ---------------------------------------------------------------------------
 
-default_exchange = Exchange("aios", type="direct")
+default_exchange = Exchange("osymandias", type="direct")
 
 celery_app.conf.task_queues = (
     Queue("scheduler", default_exchange, routing_key="scheduler"),
@@ -30,16 +30,16 @@ celery_app.conf.task_queues = (
 )
 
 celery_app.conf.task_default_queue = "agents"
-celery_app.conf.task_default_exchange = "aios"
+celery_app.conf.task_default_exchange = "osymandias"
 celery_app.conf.task_default_routing_key = "agents"
 
 # Route tasks to their queues explicitly
 celery_app.conf.task_routes = {
-    "aios.workers.scheduler_tasks.*": {"queue": "scheduler"},
-    "aios.workers.agent_tasks.*":     {"queue": "agents"},
-    "aios.workers.tool_tasks.*":      {"queue": "tools"},
-    "aios.workers.evaluator_tasks.*": {"queue": "evaluator"},
-    "aios.workers.beat_tasks.*":      {"queue": "scheduler"},
+    "osymandias.runtime.workers.scheduler_tasks.*": {"queue": "scheduler"},
+    "osymandias.runtime.workers.agent_tasks.*":     {"queue": "agents"},
+    "osymandias.runtime.workers.tool_tasks.*":      {"queue": "tools"},
+    "osymandias.runtime.workers.evaluator_tasks.*": {"queue": "evaluator"},
+    "osymandias.runtime.workers.beat_tasks.*":      {"queue": "scheduler"},
 }
 
 # ---------------------------------------------------------------------------
@@ -52,11 +52,11 @@ celery_app.conf.update(
     accept_content=["json"],
     timezone="UTC",
     enable_utc=True,
-    task_acks_late=True,           # ack only after the task finishes
-    task_reject_on_worker_lost=True,  # requeue if the worker dies mid-task
-    worker_prefetch_multiplier=1,  # one task per worker at a time
+    task_acks_late=True,
+    task_reject_on_worker_lost=True,
+    worker_prefetch_multiplier=1,
     task_track_started=True,
-    result_expires=3600,           # keep results in Redis for 1 hour
+    result_expires=3600,
 )
 
 # ---------------------------------------------------------------------------
@@ -67,11 +67,11 @@ from celery.schedules import crontab  # noqa: E402
 
 celery_app.conf.beat_schedule = {
     "monitor-heartbeats": {
-        "task": "aios.workers.beat_tasks.monitor_heartbeats",
-        "schedule": 30.0,  # every 30 seconds
+        "task": "osymandias.runtime.workers.beat_tasks.monitor_heartbeats",
+        "schedule": 30.0,
     },
     "aggregate-metrics": {
-        "task": "aios.workers.beat_tasks.aggregate_metrics",
-        "schedule": 300.0,  # every 5 minutes
+        "task": "osymandias.runtime.workers.beat_tasks.aggregate_metrics",
+        "schedule": 300.0,
     },
 }
