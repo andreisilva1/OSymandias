@@ -1,0 +1,69 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "osymandias"
+version = "0.1.0"
+description = "Multi-agent runtime for Python developers"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+keywords = ["agents", "llm", "multi-agent", "runtime", "ai"]
+dependencies = [
+    # CLI
+    "typer>=0.12.0",
+    "rich>=13.7.0",
+
+    # web / API
+    "fastapi>=0.111.0",
+    "uvicorn[standard]>=0.29.0",
+    "python-multipart>=0.0.9",
+
+    # database
+    "sqlalchemy[asyncio]>=2.0.0",
+    "asyncpg>=0.29.0",
+    "psycopg2-binary>=2.9.0",
+    "alembic>=1.13.0",
+    "pgvector>=0.3.0",
+
+    # cache + pub/sub
+    "redis[hiredis]>=5.0.0",
+
+    # task queue
+    "celery[rabbitmq]>=5.3.0",
+    "kombu>=5.3.0",
+
+    # vector store
+    "qdrant-client>=1.9.0",
+
+    # LLM
+    "litellm>=1.40.0",
+
+    # validation
+    "pydantic>=2.7.0",
+    "pydantic-settings>=2.2.0",
+
+    # observability
+    "loguru>=0.7.0",
+
+    # HTTP client
+    "httpx>=0.27.0",
+    "beautifulsoup4>=4.12.0",
+    "ddgs>=0.1.0",
+
+    # utilities
+    "python-dotenv>=1.0.0",
+    "tenacity>=8.3.0",
+    "tiktoken>=0.7.0",
+]
+
+[project.scripts]
+osy = "osymandias.cli.main:app"
+
+[tool.hatch.build.targets.wheel]
+packages = ["osymandias"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
