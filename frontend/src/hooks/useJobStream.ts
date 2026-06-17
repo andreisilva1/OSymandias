@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { Event } from "@/types";
 
-const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:47760";
 
 interface UseJobStreamOptions {
   onEvent?: (event: Event) => void;

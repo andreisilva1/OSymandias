@@ -2,7 +2,7 @@ import type { Job, Task, AgentDefinition, AgentInstance, ToolDefinition, ToolCal
 
 type EventsParams = { limit?: number; job_id?: string; event_type?: string };
 
-const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:47760";
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
