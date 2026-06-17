@@ -344,7 +344,7 @@ def _run_migrations() -> None:
     from alembic import command as alembic_command
 
     runtime_dir = Path(__file__).parent.parent / "runtime"
-    db_url = os.environ.get("POSTGRES_URL", "postgresql+asyncpg://osy:osy@localhost:5432/osymandias")
+    db_url = os.environ.get("POSTGRES_URL", "postgresql+asyncpg://osy:osy@localhost:47762/osymandias")
 
     cfg = Config()
     cfg.set_main_option("script_location", str(runtime_dir / "alembic"))
@@ -396,10 +396,10 @@ LLM_DEFAULT_MODEL={model}
 {key_line}
 
 # Infrastructure (managed by osy serve)
-POSTGRES_URL=postgresql+asyncpg://osy:osy@localhost:5432/osymandias
-REDIS_URL=redis://localhost:6379/0
-RABBITMQ_URL=amqp://guest:guest@localhost:5672/
-QDRANT_URL=http://localhost:6333
+POSTGRES_URL=postgresql+asyncpg://osy:osy@localhost:47762/osymandias
+REDIS_URL=redis://localhost:47763/0
+RABBITMQ_URL=amqp://guest:guest@localhost:47764/
+QDRANT_URL=http://localhost:47766
 
 # CORS (frontend on {FRONTEND_PORT}, direct API access on {RUNTIME_PORT})
 CORS_ORIGINS=http://localhost:{FRONTEND_PORT},http://localhost:{RUNTIME_PORT}
@@ -464,7 +464,7 @@ services:
       POSTGRES_USER: osy
       POSTGRES_PASSWORD: osy
       POSTGRES_DB: osymandias
-    ports: ["5432:5432"]
+    ports: ["47762:5432"]
     volumes: ["osy_postgres:/var/lib/postgresql/data"]
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U osy"]
@@ -474,7 +474,7 @@ services:
 
   redis:
     image: redis:7-alpine
-    ports: ["6379:6379"]
+    ports: ["47763:6379"]
     volumes: ["osy_redis:/data"]
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
@@ -483,7 +483,7 @@ services:
 
   rabbitmq:
     image: rabbitmq:3-management-alpine
-    ports: ["5672:5672", "15672:15672"]
+    ports: ["47764:5672", "47765:15672"]
     volumes: ["osy_rabbitmq:/var/lib/rabbitmq"]
     healthcheck:
       test: ["CMD", "rabbitmq-diagnostics", "ping"]
@@ -492,7 +492,7 @@ services:
 
   qdrant:
     image: qdrant/qdrant:latest
-    ports: ["6333:6333"]
+    ports: ["47766:6333"]
     volumes: ["osy_qdrant:/qdrant/storage"]
     healthcheck:
       test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/localhost/6333' 2>/dev/null"]
