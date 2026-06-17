@@ -9,7 +9,7 @@ def setup_logging() -> None:
     logger.remove()
     logger.add(
         sys.stderr,
-        level=settings.log_level,
+        level=settings.osy_log_level,
         format=(
             "<green>{time:YYYY-MM-DD HH:mm:ss}</green> | "
             "<level>{level: <8}</level> | "
@@ -18,10 +18,10 @@ def setup_logging() -> None:
         colorize=True,
     )
     logger.add(
-        "logs/aios.log",
-        level=settings.log_level,
+        "logs/osymandias.log",
+        level=settings.osy_log_level,
         rotation="100 MB",
         retention="14 days",
         serialize=True,  # JSON in file
     )
-    logger.info("Logging initialised at level {}", settings.log_level)
+    logger.info("Logging initialised at level {}", settings.osy_log_level)

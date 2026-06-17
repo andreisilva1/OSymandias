@@ -10,7 +10,7 @@ from osymandias.runtime.config import settings
 from osymandias.runtime.models import Base  # noqa: F401 — imports all models so Alembic detects them
 
 config = context.config
-config.set_main_option("sqlalchemy.url", settings.postgres_url)
+config.set_main_option("sqlalchemy.url", settings.osy_postgres_url)
 
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)

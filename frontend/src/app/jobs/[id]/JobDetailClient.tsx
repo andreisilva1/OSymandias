@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { usePathname } from "next/navigation";
 import { useJob, useJobTasks, useJobToolCalls, useJobMessages, useJobAgentInstances } from "@/hooks/useJobData";
 import { useJobStream } from "@/hooks/useJobStream";
 import { StatusBadge } from "@/components/jobs/JobStatusBadge";
@@ -24,7 +25,9 @@ const TC_COLOR: Record<string, string> = {
   SUCCESS:"text-green", FAILED:"text-red", RUNNING:"text-cyan", PENDING:"text-amber", TIMEOUT:"text-red",
 };
 
-export function JobDetailClient({ id }: { id: string }) {
+export function JobDetailClient({ id: staticId }: { id: string }) {
+  const pathname = usePathname();
+  const id = pathname?.split("/")[2] || staticId;
   const [tab, setTab] = useState<Tab>("OVERVIEW");
   const { data: job, isLoading } = useJob(id);
   const { data: tasks = [] } = useJobTasks(id);

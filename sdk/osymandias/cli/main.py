@@ -152,22 +152,19 @@ def serve():
             compose_env["OSY_FRONTEND_DIR"] = str(frontend_dir)
             compose_env["OSY_NGINX_CONF"]   = str(nginx_conf)
             with_frontend = True
-            console.print(f"[dim]✓ Frontend ready → http://localhost:{FRONTEND_PORT}[/dim]")
         else:
             console.print(f"[yellow]⚠ {NGINX_CONF_FILENAME} not found — dashboard unavailable[/yellow]")
     else:
         console.print(f"[yellow]⚠ No frontend build — run [cyan]npm run dev[/cyan] in frontend/ for the dashboard[/yellow]")
 
-    # 5. Start infra (+ nginx if frontend available)
+    # 5. Start infra (nginx starts LAST, after FastAPI is ready)
     console.print("[dim]↓ Starting infrastructure...[/dim]")
-    compose_cmd = ["docker", "compose", "-f", str(compose_path)]
-    if with_frontend:
-        compose_cmd += ["--profile", "frontend"]
-    compose_cmd += ["up", "-d"]
-    subprocess.run(compose_cmd, env=compose_env, check=True)
+    subprocess.run(
+        ["docker", "compose", "-f", str(compose_path), "up", "-d"],
+        env=compose_env, check=True,
+    )
     _wait_healthy(compose_path)
-    infra_note = "postgres · redis · rabbitmq · qdrant" + (" · nginx" if with_frontend else "")
-    console.print(f"[green]✓[/green] Infrastructure  [dim]{infra_note}[/dim]")
+    console.print(f"[green]✓[/green] Infrastructure  [dim]postgres · redis · rabbitmq · qdrant[/dim]")
 
     # 6. Run migrations
     console.print("[dim]↓ Running database migrations...[/dim]")
@@ -201,6 +198,13 @@ def serve():
         "--log-level", "warning",
     ])
 
+    # 10b. Start nginx now that FastAPI is up — dashboard will be immediately usable
+    if with_frontend:
+        subprocess.run(
+            ["docker", "compose", "-f", str(compose_path), "--profile", "frontend", "up", "-d", "nginx"],
+            env=compose_env, check=True,
+        )
+
     # 11. Start Celery workers
     pool = "solo" if sys.platform == "win32" else "prefork"
     manager.start("workers", [
@@ -213,13 +217,23 @@ def serve():
     ])
 
     time.sleep(2)
-    console.print(f"\n[green]✓[/green] Tool server    [cyan]http://localhost:{TOOL_SERVER_PORT}[/cyan]  [dim]({len(_TOOL_REGISTRY)} tools)[/dim]")
-    console.print(f"[green]✓[/green] Runtime API    [cyan]http://localhost:{RUNTIME_PORT}/api/v1[/cyan]")
+    from rich.panel import Panel
+    from rich.text import Text
+    lines = Text()
+    lines.append(f"  Tool server  ", style="dim")
+    lines.append(f"http://localhost:{TOOL_SERVER_PORT}", style="cyan")
+    lines.append(f"  ({len(_TOOL_REGISTRY)} tools)\n", style="dim")
+    lines.append(f"  API          ", style="dim")
+    lines.append(f"http://localhost:{RUNTIME_PORT}/api/v1", style="cyan")
+    lines.append("\n")
     if with_frontend:
-        console.print(f"[green]✓[/green] Dashboard      [cyan]http://localhost:{FRONTEND_PORT}[/cyan]")
+        lines.append(f"  Dashboard    ", style="dim")
+        lines.append(f"http://localhost:{FRONTEND_PORT}", style="bold cyan")
     else:
-        console.print(f"[dim]  Dashboard: cd frontend && npm run dev[/dim]")
-    console.print("\n[dim]Press Ctrl+C to stop.[/dim]\n")
+        lines.append(f"  Dashboard    cd frontend && npm run dev", style="dim")
+    lines.append("\n\n")
+    lines.append("  Press Ctrl+C to stop.", style="dim")
+    console.print(Panel(lines, title="[green]OSymandias ready[/green]", border_style="green", padding=(0, 1)))
 
     manager.wait_all()
 
@@ -344,7 +358,7 @@ def _run_migrations() -> None:
     from alembic import command as alembic_command
 
     runtime_dir = Path(__file__).parent.parent / "runtime"
-    db_url = os.environ.get("POSTGRES_URL", "postgresql+asyncpg://osy:osy@localhost:47762/osymandias")
+    db_url = os.environ.get("OSY_POSTGRES_URL", "postgresql+asyncpg://osy:osy@localhost:47762/osymandias")
 
     cfg = Config()
     cfg.set_main_option("script_location", str(runtime_dir / "alembic"))
@@ -396,16 +410,16 @@ LLM_DEFAULT_MODEL={model}
 {key_line}
 
 # Infrastructure (managed by osy serve)
-POSTGRES_URL=postgresql+asyncpg://osy:osy@localhost:47762/osymandias
-REDIS_URL=redis://localhost:47763/0
-RABBITMQ_URL=amqp://guest:guest@localhost:47764/
-QDRANT_URL=http://localhost:47766
+OSY_POSTGRES_URL=postgresql+asyncpg://osy:osy@localhost:47762/osymandias
+OSY_REDIS_URL=redis://localhost:47763/0
+OSY_RABBITMQ_URL=amqp://guest:guest@localhost:47764/
+OSY_QDRANT_URL=http://localhost:47766
 
 # CORS (frontend on {FRONTEND_PORT}, direct API access on {RUNTIME_PORT})
-CORS_ORIGINS=http://localhost:{FRONTEND_PORT},http://localhost:{RUNTIME_PORT}
+OSY_CORS_ORIGINS=http://localhost:{FRONTEND_PORT},http://localhost:{RUNTIME_PORT}
 
 # Tool server (internal)
-TOOL_SERVER_URL=http://localhost:{TOOL_SERVER_PORT}
+OSY_TOOL_SERVER_URL=http://localhost:{TOOL_SERVER_PORT}
 """, encoding="utf-8")
 
 
@@ -434,6 +448,10 @@ server {{
 
     location /health {{
         proxy_pass http://host.docker.internal:{RUNTIME_PORT}/health;
+    }}
+
+    location ~ ^/jobs/[^/]+$ {{
+        try_files $uri $uri.html /jobs/_.html;
     }}
 
     location / {{

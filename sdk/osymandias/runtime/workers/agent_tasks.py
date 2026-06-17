@@ -13,7 +13,7 @@ from osymandias.runtime.workers.celery_app import celery_app
 
 
 @celery_app.task(
-    name="aios.workers.agent_tasks.run_agent_task",
+    name="osymandias.runtime.workers.agent_tasks.run_agent_task",
     bind=True,
     max_retries=0,  # retry logic is handled by scheduler via heartbeat monitor
     soft_time_limit=130,
@@ -96,7 +96,7 @@ def run_agent_task(self, task_id: str, agent_instance_id: str) -> None:
 
 
 @celery_app.task(
-    name="aios.workers.agent_tasks.run_planner",
+    name="osymandias.runtime.workers.agent_tasks.run_planner",
     bind=True,
     max_retries=2,
     soft_time_limit=90,

@@ -25,7 +25,7 @@ from osymandias.runtime.config import settings as _settings  # noqa: E402
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[o.strip() for o in _settings.cors_origins.split(",") if o.strip()],
+    allow_origins=[o.strip() for o in _settings.osy_cors_origins.split(",") if o.strip()],
     allow_credentials=False,
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["Content-Type", "Authorization", "Accept", "Origin"],

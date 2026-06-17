@@ -15,7 +15,7 @@ router = APIRouter(prefix="/api/v1/metrics", tags=["metrics"])
 
 @router.get("/summary")
 async def metrics_summary(db: AsyncSession = Depends(get_db)):
-    r = _redis.from_url(settings.redis_url, decode_responses=True)
+    r = _redis.from_url(settings.osy_redis_url, decode_responses=True)
     cached = r.get("metrics:summary")
     if cached:
         return json.loads(cached)

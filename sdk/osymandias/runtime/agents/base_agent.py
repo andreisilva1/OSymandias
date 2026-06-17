@@ -61,7 +61,7 @@ class BaseAgent:
             session.add(self.instance)
             session.flush()
 
-        self._redis = _redis.from_url(settings.redis_url, decode_responses=True)
+        self._redis = _redis.from_url(settings.osy_redis_url, decode_responses=True)
 
     # ------------------------------------------------------------------
     # Public entry points

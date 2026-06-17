@@ -12,7 +12,7 @@ from osymandias.runtime.workers.celery_app import celery_app
 
 
 @celery_app.task(
-    name="aios.workers.evaluator_tasks.evaluate_output",
+    name="osymandias.runtime.workers.evaluator_tasks.evaluate_output",
     bind=True,
     max_retries=1,
     soft_time_limit=90,

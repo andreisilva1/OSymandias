@@ -15,7 +15,7 @@ from osymandias.runtime.models import AgentInstance, AgentInstanceStatus, Job, J
 from osymandias.runtime.workers.celery_app import celery_app
 
 
-@celery_app.task(name="aios.workers.beat_tasks.monitor_heartbeats")
+@celery_app.task(name="osymandias.runtime.workers.beat_tasks.monitor_heartbeats")
 def monitor_heartbeats() -> None:
     """
     Detect crashed agents (no heartbeat for N seconds) and requeue their tasks.
@@ -85,13 +85,13 @@ def monitor_heartbeats() -> None:
         session.close()
 
 
-@celery_app.task(name="aios.workers.beat_tasks.aggregate_metrics")
+@celery_app.task(name="osymandias.runtime.workers.beat_tasks.aggregate_metrics")
 def aggregate_metrics() -> None:
     """
     Compute aggregate metrics and cache them in Redis for the /metrics endpoints.
     """
     session = get_sync_session()
-    r = _redis.from_url(settings.redis_url, decode_responses=True)
+    r = _redis.from_url(settings.osy_redis_url, decode_responses=True)
     try:
         now = datetime.now(timezone.utc)
         last_24h = now - timedelta(hours=24)

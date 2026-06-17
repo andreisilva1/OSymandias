@@ -21,7 +21,7 @@ _redis_client: _redis.Redis | None = None
 def _get_redis() -> _redis.Redis:
     global _redis_client
     if _redis_client is None:
-        _redis_client = _redis.from_url(settings.redis_url, decode_responses=True)
+        _redis_client = _redis.from_url(settings.osy_redis_url, decode_responses=True)
     return _redis_client
 
 

@@ -14,7 +14,7 @@ from osymandias.runtime.workers.celery_app import celery_app
 
 
 @celery_app.task(
-    name="aios.workers.tool_tasks.execute_tool_call",
+    name="osymandias.runtime.workers.tool_tasks.execute_tool_call",
     bind=True,
     max_retries=2,
     soft_time_limit=60,
