@@ -62,6 +62,14 @@ export function useMetrics() {
   });
 }
 
+export function useMetricsDaily() {
+  return useQuery({
+    queryKey: ["metrics-daily"],
+    queryFn: () => api.metrics.daily(),
+    refetchInterval: 60_000,
+  });
+}
+
 export function useAgents() {
   return useQuery({
     queryKey: ["agents"],

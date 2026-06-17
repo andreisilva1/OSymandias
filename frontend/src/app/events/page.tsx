@@ -1,126 +1,213 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
+import Link from "next/link";
 import { useEvents } from "@/hooks/useJobData";
-import { Loader2 } from "lucide-react";
+import { Loader2, Pause, Play } from "lucide-react";
 
 const EVENT_COLORS: Record<string, string> = {
-  JOB_CREATED: "text-cyan", JOB_STARTED: "text-cyan", JOB_COMPLETED: "text-green",
-  JOB_CANCELLED: "text-muted-foreground", JOB_FAILED: "text-red",
-  TASK_CREATED: "text-muted-foreground", TASK_ASSIGNED: "text-cyan",
-  TASK_COMPLETED: "text-green", TASK_FAILED: "text-red", TASK_RETRYING: "text-amber",
-  AGENT_STARTED: "text-purple", AGENT_ITERATION: "text-muted-foreground",
-  AGENT_COMPLETED: "text-green", AGENT_CRASHED: "text-red", AGENT_HEARTBEAT: "text-muted-foreground/40",
-  TOOL_CALLED: "text-amber", TOOL_SUCCEEDED: "text-green", TOOL_FAILED: "text-red",
-  EVALUATION_STARTED: "text-purple", EVALUATION_COMPLETED: "text-green",
-  MEMORY_WRITE: "text-cyan", MEMORY_READ: "text-muted-foreground",
-  MESSAGE_SENT: "text-blue-400",
+  // Job lifecycle
+  JOB_CREATED: "#5090A8", JOB_STARTED: "#5090A8",
+  JOB_COMPLETED: "#60A890", JOB_FAILED: "#C06070", JOB_CANCELLED: "#384858",
+  // Task lifecycle
+  TASK_CREATED: "#384858", TASK_READY: "#5090A8", TASK_STARTED: "#C8A040",
+  TASK_COMPLETED: "#60A890", TASK_FAILED: "#C06070", TASK_RETRYING: "#C8A040",
+  // Agent lifecycle
+  AGENT_SPAWNED: "#7870A0", AGENT_RUNNING: "#7870A0",
+  AGENT_TERMINATED: "#384858", AGENT_CRASHED: "#C06070",
+  AGENT_STARTED: "#7870A0", AGENT_COMPLETED: "#60A890",
+  // LLM calls
+  LLM_CALL_STARTED: "#C8A040", LLM_CALL_COMPLETED: "#60A890", LLM_CALL_FAILED: "#C06070",
+  // Tool calls
+  TOOL_CALL_STARTED: "#C8A040", TOOL_CALL_COMPLETED: "#60A890", TOOL_CALL_FAILED: "#C06070",
+  // Memory / messages
+  MEMORY_WRITE: "#5090A8", MEMORY_READ: "#384858", MESSAGE_SENT: "#5090A8",
+  // Evaluation
+  EVALUATION_STARTED: "#7870A0", EVALUATION_COMPLETED: "#60A890",
 };
 
 const EVENT_TYPES = [
-  "ALL", "JOB_CREATED", "JOB_COMPLETED", "JOB_FAILED",
-  "AGENT_STARTED", "AGENT_COMPLETED", "AGENT_CRASHED",
-  "TOOL_CALLED", "TOOL_FAILED", "TASK_COMPLETED", "TASK_FAILED",
+  "ALL",
+  "JOB_CREATED", "JOB_COMPLETED", "JOB_FAILED",
+  "TASK_STARTED", "TASK_COMPLETED", "TASK_FAILED",
+  "AGENT_SPAWNED", "AGENT_TERMINATED", "AGENT_CRASHED",
+  "LLM_CALL_STARTED", "LLM_CALL_COMPLETED",
+  "TOOL_CALL_STARTED", "TOOL_CALL_COMPLETED",
 ];
 
 export default function EventStreamPage() {
   const [typeFilter, setTypeFilter] = useState("ALL");
-  const { data: events = [], isLoading } = useEvents({ limit: 100 });
+  const [paused, setPaused] = useState(false);
+  const [displayedEvents, setDisplayedEvents] = useState<typeof events>([]);
+  const bottomRef = useRef<HTMLDivElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
 
-  const filtered = typeFilter === "ALL" ? events : events.filter((e) => e.event_type === typeFilter);
+  const { data: events = [], isLoading } = useEvents({ limit: 200 });
+
+  // Update displayed events unless paused
+  useEffect(() => {
+    if (!paused) setDisplayedEvents(events);
+  }, [events, paused]);
+
+  const filtered = typeFilter === "ALL" ? displayedEvents : displayedEvents.filter((e) => e.event_type === typeFilter);
+
+  // Auto-scroll to bottom when new events arrive and not paused
+  useEffect(() => {
+    if (!paused && bottomRef.current) {
+      bottomRef.current.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [filtered.length, paused]);
+
+  const totalTokens = filtered.reduce((s, e) => s + (e.tokens_used ?? 0), 0);
+  const totalCost = filtered.reduce((s, e) => s + (e.estimated_cost ?? 0), 0);
 
   return (
     <div className="flex flex-col h-full">
-      {/* Header */}
-      <div className="flex items-center justify-between px-5 py-3.5 border-b border-border shrink-0">
+      {/* Topbar */}
+      <div className="page-topbar">
         <div>
-          <div className="os-label mb-0.5">OBSERVABILITY / EVENT STREAM</div>
-          <div className="flex items-center gap-2">
-            <span className="dot dot-running" style={{ width: 5, height: 5 }} />
-            <h1 className="text-[15px] font-semibold text-bright">Event Log</h1>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <span style={{ width: 6, height: 6, borderRadius: "50%", background: paused ? "#C8A040" : "#60A890", boxShadow: paused ? "0 0 6px rgba(200,160,64,0.5)" : "0 0 6px rgba(96,168,144,0.5)", flexShrink: 0 }} />
+            <div className="page-title">Event Log</div>
           </div>
+          <div className="page-sub">{filtered.length} events{paused ? " · paused" : " · live"}</div>
         </div>
-        <div className="flex items-center gap-2 text-[12px] text-muted-foreground">
-          {isLoading && <Loader2 className="w-3 h-3 animate-spin" />}
-          <span className="tabular">{filtered.length} events</span>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          {isLoading && !paused && <Loader2 style={{ width: 13, height: 13, color: "#607080" }} className="animate-spin" />}
+          <button
+            onClick={() => setPaused((p) => !p)}
+            className="btn btn-ghost"
+            style={{ gap: 5, fontSize: 11 }}
+          >
+            {paused
+              ? <><Play style={{ width: 11, height: 11 }} /> Resume</>
+              : <><Pause style={{ width: 11, height: 11 }} /> Pause</>
+            }
+          </button>
         </div>
       </div>
 
       {/* Type filter */}
-      <div className="flex flex-wrap gap-px px-5 py-2 border-b border-border shrink-0 bg-card/50">
+      <div className="filter-bar" style={{ flexWrap: "wrap", gap: 4 }}>
         {EVENT_TYPES.map((t) => (
           <button key={t} onClick={() => setTypeFilter(t)}
-            className={`px-2.5 py-1.5 text-[10px] tracking-wide transition-colors rounded-sm ${
-              typeFilter === t
-                ? "text-foreground bg-accent border-b-2 border-[#C9A84C]"
-                : "text-muted-foreground hover:text-foreground hover:bg-accent/40"
-            }`}>
+            style={{
+              fontSize: 10, padding: "4px 10px", borderRadius: 5, border: "1px solid transparent",
+              background: typeFilter === t ? "rgba(200,160,64,0.08)" : "transparent",
+              color: typeFilter === t ? "#C8A040" : "#607080",
+              borderColor: typeFilter === t ? "rgba(200,160,64,0.2)" : "transparent",
+              cursor: "pointer", transition: "all 0.15s",
+              fontFamily: "inherit",
+            }}
+            onMouseEnter={(e) => { if (typeFilter !== t) e.currentTarget.style.color = "#D8E0E8"; }}
+            onMouseLeave={(e) => { if (typeFilter !== t) e.currentTarget.style.color = "#607080"; }}
+          >
             {t}
           </button>
         ))}
       </div>
 
       {/* Column headers */}
-      <div className="grid grid-cols-[130px_90px_180px_80px_1fr_60px] gap-3 px-5 py-2 os-label border-b border-border bg-background/95 sticky top-0 select-none">
-        <span>TIMESTAMP</span><span>JOB</span><span>EVENT TYPE</span>
-        <span>AGENT</span><span>PAYLOAD</span><span>DUR</span>
+      <div style={{
+        display: "grid",
+        gridTemplateColumns: "130px 96px 190px 88px 1fr 64px",
+        gap: 12, padding: "6px 20px",
+        fontSize: 9, fontWeight: 600, letterSpacing: "0.1em", textTransform: "uppercase",
+        color: "#283040", borderBottom: "1px solid #1E2830",
+        background: "rgba(12,16,24,0.8)", flexShrink: 0,
+      }}>
+        <span>Timestamp</span><span>Job</span><span>Event Type</span>
+        <span>Agent</span><span>Payload</span><span>Dur</span>
       </div>
 
-      {/* Event rows */}
-      <div className="flex-1 overflow-auto divide-y divide-border/30">
+      {/* Rows */}
+      <div ref={listRef} style={{ flex: 1, overflowY: "auto" }}>
         {filtered.length === 0 && !isLoading && (
-          <div className="flex items-center justify-center py-16 text-[12px] text-muted-foreground/30">
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", padding: "64px 0", fontSize: 12, color: "#283040" }}>
             no events — run a process to generate events
           </div>
         )}
+
         {filtered.map((ev) => {
           const ts = new Date(ev.timestamp);
-          const timeStr = `${String(ts.getHours()).padStart(2,"0")}:${String(ts.getMinutes()).padStart(2,"0")}:${String(ts.getSeconds()).padStart(2,"0")}.${String(ts.getMilliseconds()).padStart(3,"0")}`;
-          const evColor = EVENT_COLORS[ev.event_type] ?? "text-muted-foreground";
+          const timeStr = `${String(ts.getHours()).padStart(2, "0")}:${String(ts.getMinutes()).padStart(2, "0")}:${String(ts.getSeconds()).padStart(2, "0")}.${String(ts.getMilliseconds()).padStart(3, "0")}`;
+          const evColor = EVENT_COLORS[ev.event_type] ?? "#384858";
+
+          const payloadText = ev.payload?.tool_name
+            ? `tool=${ev.payload.tool_name}`
+            : ev.payload?.error
+            ? String(ev.payload.error).slice(0, 60)
+            : ev.payload?.score !== undefined
+            ? `score=${ev.payload.score}`
+            : JSON.stringify(ev.payload).slice(0, 60);
+
+          const isError = !!(ev.payload?.error);
 
           return (
-            <div key={ev.id}
-              className="grid grid-cols-[130px_90px_180px_80px_1fr_60px] gap-3 px-5 py-2 hover:bg-accent/50 transition-colors items-center event-row-enter">
-              <span className="text-[11px] text-muted-foreground/50 tabular font-mono">{timeStr}</span>
-              <span className="pid tabular truncate">
-                {ev.job_id ? ev.job_id.slice(0, 8) : <span className="text-muted-foreground/30">system</span>}
+            <div key={ev.id} style={{
+              display: "grid",
+              gridTemplateColumns: "130px 96px 190px 88px 1fr 64px",
+              gap: 12, padding: "7px 20px",
+              borderBottom: "1px solid rgba(30,40,48,0.4)",
+              alignItems: "center", transition: "background 0.1s",
+            }}
+              onMouseEnter={(e) => (e.currentTarget.style.background = "#182028")}
+              onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+            >
+              <span style={{ fontSize: 11, color: "#384858", fontVariantNumeric: "tabular-nums", fontFamily: "monospace" }}>
+                {timeStr}
               </span>
-              <span className={`text-[11px] font-medium ${evColor}`}>{ev.event_type}</span>
-              <span className="pid truncate">
+
+              <span style={{ fontSize: 10, fontFamily: "monospace", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {ev.job_id ? (
+                  <Link href={`/jobs/${ev.job_id}`} style={{ color: "#5090A8", textDecoration: "none" }}
+                    onMouseEnter={(e) => (e.currentTarget.style.color = "#C8A040")}
+                    onMouseLeave={(e) => (e.currentTarget.style.color = "#5090A8")}
+                  >
+                    {ev.job_id.slice(0, 8)}
+                  </Link>
+                ) : (
+                  <span style={{ color: "#283040" }}>system</span>
+                )}
+              </span>
+
+              <span style={{ fontSize: 11, fontWeight: 500, color: evColor, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {ev.event_type}
+              </span>
+
+              <span style={{ fontSize: 10, fontFamily: "monospace", color: "#384858", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                 {ev.agent_instance_id ? ev.agent_instance_id.slice(0, 8) : "—"}
               </span>
-              <span className="text-[11px] text-muted-foreground/50 truncate font-mono">
-                {ev.payload?.tool_name
-                  ? `tool=${ev.payload.tool_name}`
-                  : ev.payload?.error
-                  ? <span className="text-red">{String(ev.payload.error).slice(0, 60)}</span>
-                  : ev.payload?.score !== undefined
-                  ? `score=${ev.payload.score}`
-                  : JSON.stringify(ev.payload).slice(0, 60)}
+
+              <span style={{ fontSize: 10, fontFamily: "monospace", color: isError ? "#C06070" : "#607080", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {payloadText}
               </span>
-              <span className="text-[11px] text-muted-foreground/30 tabular font-mono">
+
+              <span style={{ fontSize: 10, color: "#384858", fontVariantNumeric: "tabular-nums", fontFamily: "monospace" }}>
                 {ev.duration_ms != null ? `${ev.duration_ms}ms` : "—"}
               </span>
             </div>
           );
         })}
+        <div ref={bottomRef} />
       </div>
 
-      {/* Cost/token summary */}
+      {/* Footer */}
       {filtered.length > 0 && (
-        <div className="border-t border-border px-5 py-2 flex items-center gap-6 text-[11px] text-muted-foreground shrink-0 bg-card/50">
+        <div style={{
+          borderTop: "1px solid #1E2830", padding: "8px 20px",
+          display: "flex", alignItems: "center", gap: 20,
+          fontSize: 10, color: "#607080", background: "rgba(12,16,24,0.8)",
+          flexShrink: 0,
+        }}>
           <span>
-            tokens: <span className="text-foreground tabular font-mono">
-              {filtered.reduce((s, e) => s + (e.tokens_used ?? 0), 0).toLocaleString()}
-            </span>
+            tokens: <span style={{ color: "#D8E0E8", fontVariantNumeric: "tabular-nums" }}>{totalTokens.toLocaleString()}</span>
           </span>
           <span>
-            est. cost: <span className="text-amber tabular font-mono">
-              ${filtered.reduce((s, e) => s + (e.estimated_cost ?? 0), 0).toFixed(4)}
-            </span>
+            est. cost: <span style={{ color: "#C8A040", fontVariantNumeric: "tabular-nums" }}>${totalCost.toFixed(4)}</span>
           </span>
-          <span className="ml-auto text-muted-foreground/30">
-            showing {filtered.length} events · refreshes every 3s
+          <span style={{ marginLeft: "auto", color: "#283040" }}>
+            {filtered.length} events · {paused ? "paused" : "refreshes every 3s"}
           </span>
         </div>
       )}

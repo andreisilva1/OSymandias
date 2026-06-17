@@ -88,3 +88,36 @@ async def metrics_summary(db: AsyncSession = Depends(get_db)):
         "avg_job_duration_ms": int(avg_duration_row) if avg_duration_row else 0,
         "computed_at": now.isoformat(),
     }
+
+
+@router.get("/daily")
+async def metrics_daily(db: AsyncSession = Depends(get_db)):
+    """Return completed/failed counts for each of the last 7 days."""
+    now = datetime.now(timezone.utc)
+    days = []
+    for offset in range(6, -1, -1):
+        day_start = (now - timedelta(days=offset)).replace(
+            hour=0, minute=0, second=0, microsecond=0
+        )
+        day_end = day_start + timedelta(days=1)
+        label = day_start.strftime("%a")
+
+        completed = await db.scalar(
+            select(func.count(Job.id)).where(
+                Job.status == JobStatus.COMPLETED,
+                Job.completed_at >= day_start,
+                Job.completed_at < day_end,
+            )
+        ) or 0
+
+        failed = await db.scalar(
+            select(func.count(Job.id)).where(
+                Job.status == JobStatus.FAILED,
+                Job.completed_at >= day_start,
+                Job.completed_at < day_end,
+            )
+        ) or 0
+
+        days.append({"name": label, "date": day_start.date().isoformat(), "completed": completed, "failed": failed})
+
+    return days

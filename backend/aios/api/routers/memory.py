@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -33,3 +33,12 @@ async def list_memory(
         }
         for e in entries
     ]
+
+
+@router.delete("/{entry_id}", status_code=204)
+async def delete_memory_entry(entry_id: str, db: AsyncSession = Depends(get_db)):
+    entry = await db.get(MemoryEntry, entry_id)
+    if not entry:
+        raise HTTPException(status_code=404, detail="Memory entry not found")
+    await db.delete(entry)
+    await db.commit()

@@ -1,114 +1,132 @@
 "use client";
 
-import { useMetrics } from "@/hooks/useJobData";
-import { formatCost, formatTokens } from "@/lib/utils";
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, LineChart, Line } from "recharts";
+import { useMetrics, useMetricsDaily } from "@/hooks/useJobData";
+import { formatCost, formatTokens, formatDuration } from "@/lib/utils";
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
 import { Loader2 } from "lucide-react";
 
-const DAYS = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
-const PLACEHOLDER = DAYS.map((name) => ({ name, completed: 0, failed: 0 }));
-
-function Stat({ label, value, sub, color = "text-bright" }: {
+function StatCard({ label, value, sub, color = "#D8E0E8" }: {
   label: string; value: string | number; sub?: string; color?: string;
 }) {
   return (
-    <div className="border border-border bg-card px-4 py-3">
-      <div className="text-[9px] tracking-[0.12em] text-muted-foreground/50 uppercase mb-2">{label}</div>
-      <div className={`text-[22px] font-semibold tabular leading-none ${color}`}>{value}</div>
-      {sub && <div className="text-[10px] text-muted-foreground/40 mt-1">{sub}</div>}
+    <div className="stat-card">
+      <div className="stat-label">{label}</div>
+      <div className="stat-value" style={{ color }}>{value}</div>
+      {sub && <div className="stat-sub">{sub}</div>}
     </div>
   );
 }
 
 export default function MetricsPage() {
   const { data: m, isLoading } = useMetrics();
+  const { data: daily = [], isLoading: dailyLoading } = useMetricsDaily();
 
   if (isLoading || !m) {
     return (
-      <div className="flex items-center justify-center h-full gap-2 text-muted-foreground">
-        <Loader2 className="w-3 h-3 animate-spin" /> loading metrics...
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%", gap: 8, color: "#607080", fontSize: 13 }}>
+        <Loader2 style={{ width: 14, height: 14 }} className="animate-spin" /> loading metrics...
       </div>
     );
   }
 
   const successRate = (m.success_rate_7d * 100).toFixed(1);
-  const rateColor = m.success_rate_7d >= 0.9 ? "text-green" : m.success_rate_7d >= 0.7 ? "text-amber" : "text-red";
+  const rateColor = m.success_rate_7d >= 0.9 ? "#60A890" : m.success_rate_7d >= 0.7 ? "#C8A040" : "#C06070";
+  const avgDurSec = m.avg_job_duration_ms > 0 ? formatDuration(m.avg_job_duration_ms) : "—";
 
   return (
     <div className="flex flex-col h-full overflow-auto">
-      <div className="px-5 py-3 border-b border-border shrink-0">
-        <div className="text-[9px] tracking-[0.15em] text-muted-foreground/40 uppercase mb-0.5">OBSERVABILITY / METRICS</div>
-        <h1 className="text-sm font-semibold text-bright">System Metrics</h1>
+      {/* Topbar */}
+      <div className="page-topbar">
+        <div>
+          <div className="page-title">System Metrics</div>
+          <div className="page-sub">
+            {m.computed_at
+              ? `computed at ${new Date(m.computed_at).toLocaleTimeString()}`
+              : "live"}
+          </div>
+        </div>
+        {isLoading && <Loader2 style={{ width: 14, height: 14, color: "#607080" }} className="animate-spin" />}
       </div>
 
-      <div className="p-5 space-y-5">
-        {/* KPI grid */}
-        <div>
-          <div className="text-[9px] tracking-[0.15em] text-muted-foreground/40 uppercase mb-2">KEY INDICATORS</div>
-          <div className="grid grid-cols-3 gap-3">
-            <Stat label="COMPLETED / 24H"   value={m.jobs_completed_last_24h} color="text-green" sub="processes" />
-            <Stat label="FAILED / 24H"       value={m.jobs_failed_last_24h}    color="text-red"   sub="processes" />
-            <Stat label="SUCCESS RATE / 7D"  value={`${successRate}%`}         color={rateColor}  sub="7-day average" />
-            <Stat label="TOKENS / TODAY"      value={formatTokens(m.total_tokens_today)}   color="text-cyan"  sub="processed" />
-            <Stat label="COST / TODAY"        value={formatCost(m.total_cost_today)}        color="text-amber" sub="estimated" />
-            <Stat label="ACTIVE PROCESSES"   value={m.active_jobs_count}       color="text-bright" sub="running now" />
-          </div>
+      <div className="page-content">
+
+        {/* KPI row */}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12, marginBottom: 20 }}>
+          <StatCard label="Completed / 24h" value={m.jobs_completed_last_24h} sub="processes" color="#60A890" />
+          <StatCard label="Failed / 24h" value={m.jobs_failed_last_24h} sub="processes" color={m.jobs_failed_last_24h > 0 ? "#C06070" : "#D8E0E8"} />
+          <StatCard label="Active Now" value={m.active_jobs_count} sub="running + planning" />
+          <StatCard label="Avg Duration" value={avgDurSec} sub="7-day completed" color="#5090A8" />
+        </div>
+
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12, marginBottom: 20 }}>
+          <StatCard label="Success Rate / 7d" value={`${successRate}%`} sub="7-day rolling" color={rateColor} />
+          <StatCard label="Tokens Today" value={formatTokens(m.total_tokens_today)} sub="processed" color="#5090A8" />
+          <StatCard label="Cost Today" value={formatCost(m.total_cost_today)} sub="estimated" color="#C8A040" />
         </div>
 
         {/* Charts row */}
-        <div className="grid grid-cols-2 gap-4">
-          {/* Bar chart */}
-          <div className="border border-border bg-card p-4">
-            <div className="text-[9px] tracking-[0.15em] text-muted-foreground/40 uppercase mb-4">THROUGHPUT (LAST 7 DAYS)</div>
-            <ResponsiveContainer width="100%" height={160}>
-              <BarChart data={PLACEHOLDER} barGap={3} barSize={12}>
-                <XAxis dataKey="name" tick={{ fontSize: 9, fill: "#4a6480", fontFamily: "JetBrains Mono,monospace" }} axisLine={false} tickLine={false} />
-                <YAxis tick={{ fontSize: 9, fill: "#4a6480", fontFamily: "JetBrains Mono,monospace" }} axisLine={false} tickLine={false} />
-                <Tooltip
-                  contentStyle={{ background: "#0a1220", border: "1px solid #162230", borderRadius: 2, fontSize: 10, fontFamily: "JetBrains Mono,monospace" }}
-                  cursor={{ fill: "rgba(255,255,255,0.02)" }}
-                />
-                <Bar dataKey="completed" fill="#8FB5A0" radius={0} />
-                <Bar dataKey="failed"    fill="#ef4444" radius={0} />
-              </BarChart>
-            </ResponsiveContainer>
-            <div className="flex gap-4 mt-2">
-              <span className="flex items-center gap-1.5 text-[9px] text-muted-foreground">
-                <span className="w-2 h-2 bg-green-400 inline-block" style={{ background: "#8FB5A0" }} /> completed
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+
+          {/* Throughput chart */}
+          <div className="os-card" style={{ padding: 16 }}>
+            <div style={{ fontSize: 9, fontWeight: 600, letterSpacing: "0.12em", textTransform: "uppercase", color: "#384858", marginBottom: 14 }}>
+              Throughput — last 7 days
+            </div>
+            {dailyLoading ? (
+              <div style={{ height: 160, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <Loader2 style={{ width: 14, height: 14, color: "#384858" }} className="animate-spin" />
+              </div>
+            ) : (
+              <ResponsiveContainer width="100%" height={160}>
+                <BarChart data={daily} barGap={3} barSize={14}>
+                  <XAxis dataKey="name" tick={{ fontSize: 9, fill: "#384858", fontFamily: "inherit" }} axisLine={false} tickLine={false} />
+                  <YAxis tick={{ fontSize: 9, fill: "#384858", fontFamily: "inherit" }} axisLine={false} tickLine={false} allowDecimals={false} />
+                  <Tooltip
+                    contentStyle={{ background: "#0C1018", border: "1px solid #1E2830", borderRadius: 6, fontSize: 11, fontFamily: "inherit", color: "#D8E0E8" }}
+                    cursor={{ fill: "rgba(255,255,255,0.02)" }}
+                  />
+                  <Bar dataKey="completed" fill="#60A890" radius={[2, 2, 0, 0]} name="completed" />
+                  <Bar dataKey="failed" fill="#C06070" radius={[2, 2, 0, 0]} name="failed" />
+                </BarChart>
+              </ResponsiveContainer>
+            )}
+            <div style={{ display: "flex", gap: 16, marginTop: 8 }}>
+              <span style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 9, color: "#607080" }}>
+                <span style={{ width: 8, height: 8, background: "#60A890", borderRadius: 1, display: "inline-block" }} /> completed
               </span>
-              <span className="flex items-center gap-1.5 text-[9px] text-muted-foreground">
-                <span className="w-2 h-2 inline-block" style={{ background: "#ef4444" }} /> failed
+              <span style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 9, color: "#607080" }}>
+                <span style={{ width: 8, height: 8, background: "#C06070", borderRadius: 1, display: "inline-block" }} /> failed
               </span>
             </div>
           </div>
 
           {/* Success rate gauge */}
-          <div className="border border-border bg-card p-4">
-            <div className="text-[9px] tracking-[0.15em] text-muted-foreground/40 uppercase mb-4">SUCCESS RATE INDICATOR</div>
-            <div className="flex flex-col items-center justify-center h-40 gap-4">
-              <div className={`text-[48px] font-semibold tabular leading-none ${rateColor}`}>{successRate}<span className="text-[24px]">%</span></div>
-              <div className="w-full">
-                <div className="gauge" style={{ height: 8 }}>
-                  <div
-                    className={`gauge-fill ${m.success_rate_7d >= 0.9 ? "gauge-green" : m.success_rate_7d >= 0.7 ? "gauge-amber" : "gauge-red"}`}
-                    style={{ width: `${m.success_rate_7d * 100}%` }}
-                  />
+          <div className="os-card" style={{ padding: 16, display: "flex", flexDirection: "column" }}>
+            <div style={{ fontSize: 9, fontWeight: 600, letterSpacing: "0.12em", textTransform: "uppercase", color: "#384858", marginBottom: 14 }}>
+              Success Rate Indicator
+            </div>
+            <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 16 }}>
+              <div style={{ fontSize: 48, fontWeight: 700, color: rateColor, lineHeight: 1, fontVariantNumeric: "tabular-nums" }}>
+                {successRate}<span style={{ fontSize: 24, fontWeight: 400 }}>%</span>
+              </div>
+              <div style={{ width: "100%" }}>
+                <div style={{ height: 8, background: "#1E2830", borderRadius: 4, overflow: "hidden" }}>
+                  <div style={{
+                    height: "100%", borderRadius: 4,
+                    width: `${m.success_rate_7d * 100}%`,
+                    background: rateColor,
+                    transition: "width 0.6s ease",
+                  }} />
                 </div>
-                <div className="flex justify-between text-[9px] text-muted-foreground/40 mt-1">
+                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 9, color: "#283040", marginTop: 4 }}>
                   <span>0%</span><span>50%</span><span>100%</span>
                 </div>
               </div>
-              <div className="text-[10px] text-muted-foreground">7-day rolling average</div>
+              <div style={{ fontSize: 10, color: "#607080" }}>7-day rolling average</div>
             </div>
           </div>
-        </div>
 
-        {/* Computed at */}
-        {m.computed_at && (
-          <div className="text-[10px] text-muted-foreground/30 text-right">
-            computed at {new Date(m.computed_at).toLocaleTimeString()}
-          </div>
-        )}
+        </div>
       </div>
     </div>
   );

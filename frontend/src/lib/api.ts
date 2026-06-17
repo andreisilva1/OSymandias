@@ -40,15 +40,15 @@ export const api = {
 
   agents: {
     list: () => request<AgentDefinition[]>(`/api/v1/agents`),
-    get: (name: string) => request<AgentDefinition>(`/api/v1/agents/${name}`),
+    get: (name: string) => request<AgentDefinition>(`/api/v1/agents/${encodeURIComponent(name)}`),
     create: (body: Partial<AgentDefinition>) =>
       request<AgentDefinition>(`/api/v1/agents`, { method: "POST", body: JSON.stringify(body) }),
     update: (name: string, body: Partial<AgentDefinition>) =>
-      request<AgentDefinition>(`/api/v1/agents/${name}`, { method: "PUT", body: JSON.stringify(body) }),
-    deactivate:  (name: string) => request<void>(`/api/v1/agents/${name}/deactivate`,  { method: "PATCH" }),
-    reactivate:  (name: string) => request<void>(`/api/v1/agents/${name}/reactivate`,  { method: "PATCH" }),
-    delete:      (name: string) => request<void>(`/api/v1/agents/${name}`,              { method: "DELETE" }),
-    clone: (name: string) => request<AgentDefinition>(`/api/v1/agents/${name}/clone`, { method: "POST" }),
+      request<AgentDefinition>(`/api/v1/agents/${encodeURIComponent(name)}`, { method: "PUT", body: JSON.stringify(body) }),
+    deactivate:  (name: string) => request<void>(`/api/v1/agents/${encodeURIComponent(name)}/deactivate`,  { method: "PATCH" }),
+    reactivate:  (name: string) => request<void>(`/api/v1/agents/${encodeURIComponent(name)}/reactivate`,  { method: "PATCH" }),
+    delete:      (name: string) => request<void>(`/api/v1/agents/${encodeURIComponent(name)}`,              { method: "DELETE" }),
+    clone: (name: string) => request<AgentDefinition>(`/api/v1/agents/${encodeURIComponent(name)}/clone`, { method: "POST" }),
   },
 
   tools: {
@@ -73,6 +73,7 @@ export const api = {
 
   metrics: {
     summary: () => request<MetricsSummary>(`/api/v1/metrics/summary`),
+    daily: () => request<{ name: string; date: string; completed: number; failed: number }[]>(`/api/v1/metrics/daily`),
   },
 
   providers: {
@@ -88,5 +89,6 @@ export const api = {
       const qs = new URLSearchParams(p).toString();
       return request<MemoryEntry[]>(`/api/v1/memory${qs ? `?${qs}` : ""}`);
     },
+    delete: (id: string) => request<void>(`/api/v1/memory/${id}`, { method: "DELETE" }),
   },
 };
