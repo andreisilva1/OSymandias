@@ -264,13 +264,21 @@ def _wait_healthy(compose_path: Path, timeout: int = 90) -> None:
 
 def _run_migrations() -> None:
     import os
-    alembic_ini = Path(__file__).parent.parent / "runtime" / "alembic.ini"
-    if not alembic_ini.exists():
-        return
-    subprocess.run(
-        [sys.executable, "-m", "alembic", "-c", str(alembic_ini), "upgrade", "head"],
-        check=False,
-    )
+    from alembic.config import Config
+    from alembic import command as alembic_command
+
+    runtime_dir = Path(__file__).parent.parent / "runtime"
+    db_url = os.environ.get("POSTGRES_URL", "postgresql+asyncpg://osy:osy@localhost:5432/osymandias")
+
+    cfg = Config()
+    cfg.set_main_option("script_location", str(runtime_dir / "alembic"))
+    cfg.set_main_option("sqlalchemy.url", db_url)
+
+    try:
+        alembic_command.upgrade(cfg, "head")
+    except Exception as exc:
+        console.print(f"[red]✗ Migrations failed: {exc}[/red]")
+        raise typer.Exit(1)
 
 
 def _register_tools_in_db(registry: dict) -> None:
@@ -329,7 +337,7 @@ def _write_fallback_compose(dest: Path) -> None:
     dest.write_text("""\
 services:
   postgres:
-    image: postgres:16
+    image: pgvector/pgvector:pg16
     environment:
       POSTGRES_USER: osy
       POSTGRES_PASSWORD: osy
@@ -345,25 +353,34 @@ services:
   redis:
     image: redis:7-alpine
     ports: ["6379:6379"]
+    volumes: ["osy_redis:/data"]
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
+      retries: 10
 
   rabbitmq:
-    image: rabbitmq:3-management
+    image: rabbitmq:3-management-alpine
     ports: ["5672:5672", "15672:15672"]
+    volumes: ["osy_rabbitmq:/var/lib/rabbitmq"]
     healthcheck:
       test: ["CMD", "rabbitmq-diagnostics", "ping"]
       interval: 10s
       retries: 10
 
   qdrant:
-    image: qdrant/qdrant
+    image: qdrant/qdrant:latest
     ports: ["6333:6333"]
     volumes: ["osy_qdrant:/qdrant/storage"]
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/localhost/6333' 2>/dev/null"]
+      interval: 5s
+      retries: 10
 
 volumes:
   osy_postgres:
+  osy_redis:
+  osy_rabbitmq:
   osy_qdrant:
 """, encoding="utf-8")
 
