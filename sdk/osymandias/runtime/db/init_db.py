@@ -467,6 +467,8 @@ BUILTIN_AGENTS = [
 
 
 async def seed():
+    from osymandias.runtime.models.agent_definition import AGENT_KIND_BUILTIN, AGENT_KIND_EXTERNAL
+
     async with AsyncSessionLocal() as session:
         for tool_data in BUILTIN_TOOLS:
             existing = await session.get(ToolDefinition, tool_data["name"])
@@ -476,7 +478,7 @@ async def seed():
         for agent_data in BUILTIN_AGENTS:
             existing = await session.get(AgentDefinition, agent_data["name"])
             if not existing:
-                session.add(AgentDefinition(**agent_data))
+                session.add(AgentDefinition(**agent_data, agent_kind=AGENT_KIND_BUILTIN))
             else:
                 # Always update prompt and config so changes take effect on restart
                 existing.system_prompt_template = agent_data["system_prompt_template"]
@@ -485,6 +487,35 @@ async def seed():
                 existing.llm_model = agent_data["llm_model"]
                 existing.max_iterations = agent_data["max_iterations"]
                 existing.timeout_seconds = agent_data["timeout_seconds"]
+                existing.agent_kind = AGENT_KIND_BUILTIN
+
+        # Seed external agents registered via @osy.agent decorator
+        from osymandias.decorator import _AGENT_REGISTRY
+        for entry in _AGENT_REGISTRY.values():
+            existing = await session.get(AgentDefinition, entry.name)
+            if not existing:
+                session.add(AgentDefinition(
+                    name=entry.name,
+                    version="1.0",
+                    description=entry.description,
+                    role="external",
+                    system_prompt_template="",  # external agents own their logic
+                    allowed_tools=entry.tools,
+                    llm_provider=entry.llm_provider or "ollama",
+                    llm_model=entry.llm_model or "qwen2.5:7b",
+                    input_schema=entry.input_schema,
+                    output_schema=entry.output_schema or None,
+                    agent_kind=AGENT_KIND_EXTERNAL,
+                    callable_ref=entry.callable_ref,
+                    is_active=True,
+                ))
+            else:
+                existing.description = entry.description
+                existing.allowed_tools = entry.tools
+                existing.input_schema = entry.input_schema
+                existing.output_schema = entry.output_schema or existing.output_schema
+                existing.agent_kind = AGENT_KIND_EXTERNAL
+                existing.callable_ref = entry.callable_ref
 
         await session.commit()
     logger.info("Seed complete.")
