@@ -1,15 +1,16 @@
 "use client";
 
 import { useState } from "react";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useJob, useJobTasks, useJobToolCalls, useJobMessages, useJobAgentInstances } from "@/hooks/useJobData";
 import { useJobStream } from "@/hooks/useJobStream";
 import { StatusBadge } from "@/components/jobs/JobStatusBadge";
 import { ExecutionTimeline } from "@/components/execution/ExecutionTimeline";
 import { AgentGraph } from "@/components/execution/AgentGraph";
 import { formatCost, formatTokens, formatDuration } from "@/lib/utils";
-import { Clock, Cpu, DollarSign, Zap, Loader2 } from "lucide-react";
+import { Clock, Cpu, DollarSign, Zap, Loader2, RotateCcw } from "lucide-react";
 import { JobOutputViewer } from "@/components/jobs/JobOutputViewer";
+import { api } from "@/lib/api";
 
 type Tab = "OVERVIEW" | "TIMELINE" | "CALL_GRAPH" | "EVENT_LOG" | "SYSCALLS" | "OUTPUT";
 const TABS: Tab[] = ["OVERVIEW", "TIMELINE", "CALL_GRAPH", "EVENT_LOG", "SYSCALLS", "OUTPUT"];
@@ -27,8 +28,10 @@ const TC_COLOR: Record<string, string> = {
 
 export function JobDetailClient({ id: staticId }: { id: string }) {
   const pathname = usePathname();
+  const router = useRouter();
   const id = pathname?.split("/")[2] || staticId;
   const [tab, setTab] = useState<Tab>("OVERVIEW");
+  const [resubmitting, setResubmitting] = useState(false);
   const { data: job, isLoading } = useJob(id);
   const { data: tasks = [] } = useJobTasks(id);
   const { data: toolCalls = [] } = useJobToolCalls(id);
@@ -51,6 +54,20 @@ export function JobDetailClient({ id: staticId }: { id: string }) {
       ? Date.now() - new Date(job.started_at).getTime()
       : undefined;
 
+  const isTerminal = ["COMPLETED", "FAILED", "CANCELLED"].includes(job.status);
+
+  async function handleResubmit() {
+    setResubmitting(true);
+    try {
+      const newJob = await api.jobs.resubmit(id);
+      router.push(`/jobs/${newJob.id}`);
+    } catch (e) {
+      console.error("Resubmit failed", e);
+    } finally {
+      setResubmitting(false);
+    }
+  }
+
 
   return (
     <div className="flex flex-col h-full">
@@ -68,6 +85,18 @@ export function JobDetailClient({ id: staticId }: { id: string }) {
               <p className="text-[12px] text-muted-foreground mt-1 truncate">{job.description}</p>
             )}
           </div>
+          {isTerminal && (
+            <button
+              onClick={handleResubmit}
+              disabled={resubmitting}
+              className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 text-[11px] border border-border rounded-[var(--radius)] text-muted-foreground hover:text-foreground hover:border-foreground/40 transition-colors disabled:opacity-50"
+            >
+              {resubmitting
+                ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                : <RotateCcw className="w-3.5 h-3.5" />}
+              resubmit
+            </button>
+          )}
         </div>
 
         {/* KPI strip */}

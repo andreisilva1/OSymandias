@@ -30,6 +30,7 @@ export const api = {
     create: (body: { title: string; description?: string; priority?: string; input_payload: Record<string, unknown> }) =>
       request<Job>(`/api/v1/jobs`, { method: "POST", body: JSON.stringify(body) }),
     cancel: (id: string) => request<Job>(`/api/v1/jobs/${id}/cancel`, { method: "PATCH" }),
+    resubmit: (id: string) => request<Job>(`/api/v1/jobs/${id}/resubmit`, { method: "POST" }),
     tasks: (id: string) => request<Task[]>(`/api/v1/jobs/${id}/tasks`),
     messages: (id: string) => request<Message[]>(`/api/v1/jobs/${id}/messages`),
     toolCalls: (id: string) => request<ToolCall[]>(`/api/v1/jobs/${id}/tool-calls`),

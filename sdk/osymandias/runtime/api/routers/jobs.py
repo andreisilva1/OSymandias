@@ -67,6 +67,32 @@ async def get_job(job_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
     return job
 
 
+@router.post("/{job_id}/resubmit", response_model=JobResponse, status_code=status.HTTP_201_CREATED)
+async def resubmit_job(job_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
+    original = await db.get(Job, job_id)
+    if not original:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    job = Job(
+        title=original.title,
+        description=original.description,
+        priority=original.priority,
+        input_payload=original.input_payload,
+        retry_policy=original.retry_policy,
+    )
+    db.add(job)
+    await db.flush()
+
+    await EventEmitter.emit(db, "JOB_CREATED", {"title": job.title, "resubmitted_from": str(job_id)}, job_id=job.id)
+    await db.commit()
+    await db.refresh(job)
+
+    from osymandias.runtime.workers.scheduler_tasks import dispatch_job
+    dispatch_job.apply_async(args=[str(job.id)], queue="scheduler")
+
+    return job
+
+
 @router.patch("/{job_id}/cancel", response_model=JobResponse)
 async def cancel_job(job_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
     job = await db.get(Job, job_id)
