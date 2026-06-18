@@ -109,6 +109,19 @@ def init():
         _write_sample_tools(tools_dest)
         console.print(f"[green]✓[/green] {TOOLS_FILENAME} created")
 
+    # Write osymandias.toml config stub
+    osy_toml_dest = cwd / "osymandias.toml"
+    if osy_toml_dest.exists():
+        console.print(f"[yellow]↳ osymandias.toml already exists, skipping[/yellow]")
+    else:
+        osy_toml_dest.write_text(
+            "# OSymandias project config\n"
+            "# List dotted module paths containing @osy.agent decorated functions.\n"
+            "# If omitted, osy serve will auto-scan all .py files in this directory.\n"
+            "# agent_modules = [\"myapp.agents\", \"myapp.crews\"]\n"
+        )
+        console.print("[green]✓[/green] osymandias.toml created")
+
     console.print("\n[bold green]Ready.[/bold green] Run [cyan]osy serve[/cyan] to start.\n")
 
 
@@ -175,6 +188,13 @@ def serve():
     console.print("[dim]↓ Scanning for @osy.tool functions...[/dim]")
     count = discover(cwd)
     console.print(f"[dim]✓ {len(_TOOL_REGISTRY)} tool(s) registered[/dim]")
+
+    # 7b. Discover @osy.agent functions (uses agent_modules config or auto-scan)
+    from osymandias.discovery import discover_agents
+    from osymandias.decorator import _AGENT_REGISTRY
+    agent_count = discover_agents(cwd)
+    if agent_count:
+        console.print(f"[dim]✓ {agent_count} external agent(s) discovered[/dim]")
 
     # 8. Start tool server
     manager.start("tool-server", [
