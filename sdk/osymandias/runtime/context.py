@@ -229,15 +229,18 @@ class OsyContext:
     ) -> dict[str, dict[str, Any]]:
         """Block until all specified child tasks reach a terminal state.
 
-        Polls the database every second. Returns all results regardless of
-        whether individual tasks succeeded or failed — check each value for
-        an ``"error"`` key if failure handling is needed.
+        Subscribes to the job's Redis pub/sub channel so it wakes immediately
+        when each task completes — no fixed polling interval. Falls back to a
+        final DB read to catch tasks that finished before the subscription was
+        established. Returns all results regardless of whether individual tasks
+        succeeded or failed — check each value for an ``"error"`` key if
+        failure handling is needed.
 
         Args:
             task_ids: List of task UUIDs returned by :meth:`spawn_tasks`.
             timeout:  Maximum seconds to wait before returning partial results
                       (default 90). Tasks still pending at timeout are logged
-                      as a warning and their dict will be empty ``{}``.
+                      as a warning and their result dict will be empty ``{}``.
 
         Returns:
             Dict mapping ``task title → output_result dict``.
@@ -250,35 +253,79 @@ class OsyContext:
             research = results.get("Research", {})
             summary  = results.get("Summarise", {})
         """
+        import json as _json
+
+        import redis as _redis
         from sqlalchemy import select
+
+        from osymandias.runtime.config import settings
         from osymandias.runtime.models import Task, TaskStatus
 
         terminal = {TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.CANCELLED}
-        deadline = time.monotonic() + timeout
         pending = set(task_ids)
 
-        while pending and time.monotonic() < deadline:
+        # ── Initial snapshot ────────────────────────────────────────────────
+        # Tasks may have already finished before this call.
+        self._session.expire_all()
+        rows = self._session.scalars(
+            select(Task).where(Task.id.in_(list(task_ids)))
+        ).all()
+        for row in rows:
+            if row.status in terminal:
+                pending.discard(row.id)
+
+        if not pending:
+            return {row.title: row.output_result or {} for row in rows}
+
+        # ── Redis pub/sub ────────────────────────────────────────────────────
+        # EventEmitter publishes TASK_COMPLETED / TASK_FAILED to this channel.
+        r = _redis.from_url(settings.osy_redis_url, decode_responses=True)
+        pubsub = r.pubsub(ignore_subscribe_messages=True)
+        pubsub.subscribe(f"events:job:{self.job_id}")
+
+        deadline = time.monotonic() + timeout
+        try:
+            while pending and time.monotonic() < deadline:
+                remaining = max(0.1, deadline - time.monotonic())
+                msg = pubsub.get_message(timeout=min(remaining, 2.0))
+                if not msg:
+                    continue
+                try:
+                    data = _json.loads(msg["data"])
+                except Exception:
+                    continue
+                if data.get("event_type") in ("TASK_COMPLETED", "TASK_FAILED", "TASK_CANCELLED"):
+                    tid_str = data.get("task_id")
+                    if tid_str:
+                        try:
+                            pending.discard(uuid.UUID(tid_str))
+                        except ValueError:
+                            pass
+        finally:
+            pubsub.unsubscribe()
+            pubsub.close()
+
+        # ── Fallback DB check ────────────────────────────────────────────────
+        # Catches tasks that completed between the initial snapshot and the
+        # subscribe call (pub/sub message would have been missed).
+        if pending:
+            self._session.expire_all()
             rows = self._session.scalars(
-                select(Task).where(Task.id.in_(list(pending)))
+                select(Task).where(Task.id.in_(list(task_ids)))
             ).all()
             for row in rows:
                 if row.status in terminal:
                     pending.discard(row.id)
             if pending:
-                self._session.expire_all()
-                time.sleep(1)
+                logger.warning(
+                    "wait_for_tasks: {} task(s) did not complete within {}s",
+                    len(pending),
+                    timeout,
+                )
 
-        if pending:
-            logger.warning(
-                "wait_for_tasks: {} tasks did not complete within {}s",
-                len(pending),
-                timeout,
-            )
-
-        results: dict[str, dict[str, Any]] = {}
+        # ── Collect results ──────────────────────────────────────────────────
+        self._session.expire_all()
         rows = self._session.scalars(
             select(Task).where(Task.id.in_(list(task_ids)))
         ).all()
-        for row in rows:
-            results[row.title] = row.output_result or {}
-        return results
+        return {row.title: row.output_result or {} for row in rows}

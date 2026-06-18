@@ -449,7 +449,7 @@ Block until all specified child tasks reach a terminal state (completed, failed,
 ctx.wait_for_tasks(task_ids: list[uuid.UUID], timeout: int = 90) -> dict[str, dict]
 ```
 
-Polls the database every second. Returns results for all tasks regardless of success or failure — check individual dicts for an `"error"` key if needed.
+Subscribes to the job's Redis pub/sub channel and wakes immediately when each task completes — no fixed polling interval. Falls back to a final DB read to cover the edge case where a task finished before the subscription was established. Returns results for all tasks regardless of success or failure — check individual dicts for an `"error"` key if needed.
 
 **Returns:** `{task_title: output_result_dict}`
 
