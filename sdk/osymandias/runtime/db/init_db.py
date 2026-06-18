@@ -297,7 +297,8 @@ BUILTIN_AGENTS = [
         "role": "supervisor",
         "system_prompt_template": (
             "You are a PlannerAgent. Break the job into 2-4 tasks.\n\n"
-            "AGENT TYPES (copy exactly): ResearchAgent, WriterAgent, AnalystAgent, EvaluatorAgent\n\n"
+            "AVAILABLE AGENT TYPES — use the exact names shown:\n"
+            "{{available_agents}}\n\n"
             "MEMORY RULE:\n"
             '- AnalystAgent: start description with \'Read job memory key "ResearchAgent". \'\n'
             '- WriterAgent: start description with \'Read job memory key "AnalystAgent". \'\n\n'

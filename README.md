@@ -188,7 +188,7 @@ Job        →  A user-submitted goal ("research and write a report on X")
               └── Sub-task  →  ctx.spawn_tasks([...]) → child Task ×N
 ```
 
-Jobs are decomposed into tasks by a PlannerAgent. Tasks execute in parallel across specialized agents. External agents registered via `@osy.agent` are dispatched via Celery — same queue, same observability. An EvaluatorAgent scores outputs and retries if confidence is below threshold.
+Jobs are decomposed into tasks by a PlannerAgent. The planner receives the full list of available agent types — builtin **and** every `@osy.agent` you registered — so natural-language jobs route to external agents automatically. Tasks execute in parallel across specialized agents. An EvaluatorAgent scores outputs and retries if confidence is below threshold.
 
 ---
 

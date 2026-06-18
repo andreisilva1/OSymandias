@@ -224,6 +224,21 @@ osy.agent(
 
 > **All kwargs are optional.** The agent executes regardless of what is declared. They exist purely to enrich the dashboard display.
 
+### Adaptive agent registry
+
+External agents are automatically included in the PlannerAgent's context on every job. When a natural language job is submitted (no `__task_plan__`), the planner receives the full list of available agent types — builtin *and* external — and can route tasks to any of them by name. No configuration required: register an agent with `@osy.agent`, and the planner discovers it on the next `osy serve`.
+
+```
+osy serve          ← discovers @osy.agent callables, seeds DB
+↓
+POST /jobs {"title": "...", "description": "Research EVs and write a summary"}
+↓
+PlannerAgent        ← sees: ResearchAgent, WriterAgent, AnalystAgent,
+                           MyCustomAgent [langchain] (external), ...
+↓
+Creates tasks routed to the right agents automatically
+```
+
 ### Callable signature
 
 The decorated function must accept `task: str` as its first argument and return a `dict`. The `ctx: OsyContext` parameter is optional — include it to access memory, events, and sub-tasks.

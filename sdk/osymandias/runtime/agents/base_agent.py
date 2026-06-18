@@ -444,9 +444,12 @@ class BaseAgent:
         )
 
     def _build_minimal_context(self, extra_context: dict) -> dict:
+        template = self.definition.system_prompt_template
+        for key, value in extra_context.items():
+            template = template.replace(f"{{{{{key}}}}}", str(value))
         return {
-            "system_prompt": self.definition.system_prompt_template,
-            "injected_context": str(extra_context),
+            "system_prompt": template,
+            "injected_context": "",
             "tool_schemas": [],
             "mailbox_messages": [],
         }

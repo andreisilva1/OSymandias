@@ -151,6 +151,7 @@ def run_planner(self, job_id: str, agent_instance_id: str) -> None:
         context = {
             "job_description": job.description or job.title,
             "input_payload": job.input_payload,
+            "available_agents": _build_agent_catalogue(session),
         }
         result = agent.run_sync(extra_context=context)
 
@@ -158,7 +159,10 @@ def run_planner(self, job_id: str, agent_instance_id: str) -> None:
         from osymandias.runtime.models import Task, TaskDependency, TaskStatus
         task_map: dict[str, Task] = {}
 
-        # Normalize LLM-returned agent type names to registered agent_definition names
+        # Normalize LLM-returned agent type names to registered agent_definition names.
+        # Seed with builtin aliases; then add exact names for every registered agent
+        # so external agents are matched case-insensitively even if the LLM drops/adds
+        # capitalisation.
         _AGENT_TYPE_MAP: dict[str, str] = {
             "researchagent": "ResearchAgent",
             "researcher": "ResearchAgent",
@@ -174,6 +178,14 @@ def run_planner(self, job_id: str, agent_instance_id: str) -> None:
             "planneragent": "PlannerAgent",
             "planner": "PlannerAgent",
         }
+        # Extend map with every registered agent (handles external agents)
+        try:
+            from sqlalchemy import select as _select
+            from osymandias.runtime.models import AgentDefinition as _AD
+            for _ad in session.scalars(_select(_AD).where(_AD.is_active == True)).all():  # noqa: E712
+                _AGENT_TYPE_MAP[_ad.name.lower()] = _ad.name
+        except Exception:
+            pass
 
         def _normalize_agent_type(raw: str) -> str:
             return _AGENT_TYPE_MAP.get(raw.lower().strip(), raw)
@@ -228,6 +240,32 @@ def run_planner(self, job_id: str, agent_instance_id: str) -> None:
         raise self.retry(exc=exc, countdown=10)
     finally:
         session.close()
+
+
+def _build_agent_catalogue(session) -> str:
+    """Return a formatted list of all active agent types for the PlannerAgent prompt."""
+    from sqlalchemy import select
+    from osymandias.runtime.models import AgentDefinition
+    from osymandias.runtime.models.agent_definition import AGENT_KIND_EXTERNAL
+
+    _EXCLUDE = {"PlannerAgent", "EvaluatorAgent"}
+    try:
+        defs = session.scalars(
+            select(AgentDefinition).where(AgentDefinition.is_active == True)  # noqa: E712
+        ).all()
+    except Exception:
+        return "ResearchAgent, WriterAgent, AnalystAgent"
+
+    lines = []
+    for ad in defs:
+        if ad.name in _EXCLUDE:
+            continue
+        kind = "external" if ad.agent_kind == AGENT_KIND_EXTERNAL else "builtin"
+        framework = f" [{ad.framework}]" if getattr(ad, "framework", None) else ""
+        desc = ad.description or ""
+        lines.append(f"- {ad.name}{framework} ({kind}): {desc}")
+
+    return "\n".join(lines) if lines else "ResearchAgent, WriterAgent, AnalystAgent"
 
 
 def _resolve_callable_ref(callable_ref: str) -> None:
