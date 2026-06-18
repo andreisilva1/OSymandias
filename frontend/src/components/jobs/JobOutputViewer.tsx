@@ -3,7 +3,7 @@
 import { useState, useCallback } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { Check, Clipboard, Code2, Eye, Download, X } from "lucide-react";
+import { Check, Clipboard, Code2, Eye, Download, X, Radio } from "lucide-react";
 
 interface MediaItem {
   type: "image" | "pdf";
@@ -148,17 +148,52 @@ interface TaskOutput {
 interface JobOutputViewerProps {
   outputPayload: Record<string, unknown> | null | undefined;
   tasks?: { title: string; agent_type?: string }[];
+  liveProgress?: Record<string, unknown>;
 }
 
-export function JobOutputViewer({ outputPayload, tasks = [] }: JobOutputViewerProps) {
+export function JobOutputViewer({ outputPayload, tasks = [], liveProgress = {} }: JobOutputViewerProps) {
   const [viewRaw, setViewRaw]       = useState(false);
   const [expanded, setExpanded]     = useState<Record<string, boolean>>({});
   const [copiedAll, setCopiedAll]   = useState(false);
 
-  if (!outputPayload || Object.keys(outputPayload).length === 0) {
+  const hasOutput = outputPayload && Object.keys(outputPayload).length > 0;
+  const hasLive   = Object.keys(liveProgress).length > 0;
+
+  if (!hasOutput) {
+    if (!hasLive) {
+      return (
+        <div className="flex items-center justify-center py-16 text-[12px] text-muted-foreground/30 border border-border rounded-[var(--radius)]">
+          no output yet — process still running
+        </div>
+      );
+    }
+
+    // Live preview: show latest TASK_PROGRESS payloads while still running
     return (
-      <div className="flex items-center justify-center py-16 text-[12px] text-muted-foreground/30 border border-border rounded-[var(--radius)]">
-        no output yet — process still running
+      <div className="space-y-3">
+        <div className="flex items-center gap-2 text-[11px] text-amber">
+          <Radio className="w-3.5 h-3.5 animate-pulse" />
+          <span className="os-label">live progress</span>
+        </div>
+        {Object.entries(liveProgress).map(([title, payload]) => {
+          const { text } = extractContent(payload);
+          const taskMeta = tasks.find((t) => t.title === title);
+          const color = agentColor(taskMeta?.agent_type);
+          return (
+            <div key={title} className="border border-amber/20 rounded-[var(--radius)] overflow-hidden">
+              <div className="flex items-center gap-3 px-4 py-2.5 bg-amber/5">
+                <span className={`text-[10px] tracking-wider uppercase font-medium px-2 py-0.5 rounded border ${color} shrink-0`}>
+                  {taskMeta?.agent_type ?? "agent"}
+                </span>
+                <span className="text-[12px] font-medium text-foreground truncate">{title}</span>
+                <span className="ml-auto text-[10px] text-amber/60 tabular font-mono animate-pulse">running</span>
+              </div>
+              <pre className="text-[11px] bg-background text-muted-foreground/70 px-5 py-3 overflow-auto leading-relaxed font-mono max-h-40 border-t border-amber/10">
+                {text}
+              </pre>
+            </div>
+          );
+        })}
       </div>
     );
   }

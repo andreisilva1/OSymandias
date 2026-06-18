@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { useJob, useJobTasks, useJobToolCalls, useJobMessages, useJobAgentInstances } from "@/hooks/useJobData";
 import { useJobStream } from "@/hooks/useJobStream";
@@ -55,6 +55,23 @@ export function JobDetailClient({ id: staticId }: { id: string }) {
       : undefined;
 
   const isTerminal = ["COMPLETED", "FAILED", "CANCELLED"].includes(job.status);
+
+  // Derive latest TASK_PROGRESS payload per task from the live SSE stream.
+  // Used as a live preview when output_payload is not yet available.
+  const liveProgress = useMemo(() => {
+    if (isTerminal) return {};
+    const taskById = Object.fromEntries(tasks.map((t) => [t.id, t.title]));
+    const seen = new Set<string>();
+    const result: Record<string, unknown> = {};
+    for (const ev of events) {
+      if (ev.event_type === "TASK_PROGRESS" && ev.task_id && !seen.has(ev.task_id)) {
+        seen.add(ev.task_id);
+        const title = taskById[ev.task_id] ?? ev.task_id;
+        result[title] = ev.payload;
+      }
+    }
+    return result;
+  }, [events, tasks, isTerminal]);
 
   async function handleResubmit() {
     setResubmitting(true);
@@ -320,7 +337,7 @@ export function JobDetailClient({ id: staticId }: { id: string }) {
         {/* OUTPUT */}
         {tab === "OUTPUT" && (
           <div className="p-5">
-            <JobOutputViewer outputPayload={job.output_payload} tasks={tasks} />
+            <JobOutputViewer outputPayload={job.output_payload} tasks={tasks} liveProgress={liveProgress} />
           </div>
         )}
       </div>
