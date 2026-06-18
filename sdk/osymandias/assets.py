@@ -45,6 +45,15 @@ def fetch_compose(dest: Path) -> None:
 
 
 def ensure_frontend() -> Path:
+    # Prefer the frontend bundled inside the installed wheel (no network needed).
+    try:
+        import osymandias as _pkg
+        bundled = Path(_pkg.__file__).parent / "frontend_dist"
+        if bundled.exists() and any(bundled.iterdir()):
+            return bundled
+    except Exception:
+        pass
+
     fdir = frontend_dir()
     if fdir.exists() and any(fdir.iterdir()):
         return fdir

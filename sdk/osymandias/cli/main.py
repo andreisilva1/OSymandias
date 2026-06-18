@@ -660,6 +660,16 @@ def _resolve_compose(cwd: Path) -> Path:
 
 
 def _resolve_frontend_dir(cwd: Path) -> "Path | None":
+    # 1. Bundled inside the installed wheel — preferred, works offline
+    try:
+        import osymandias as _pkg
+        bundled = Path(_pkg.__file__).parent / "frontend_dist"
+        if bundled.exists() and any(bundled.iterdir()):
+            return bundled
+    except Exception:
+        pass
+
+    # 2. GitHub asset fetch / local dev build
     try:
         from osymandias.assets import ensure_frontend
         return ensure_frontend()

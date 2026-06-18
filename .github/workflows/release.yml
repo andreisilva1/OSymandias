@@ -32,6 +32,9 @@ jobs:
       - name: Package frontend artifact
         run: tar -czf frontend-static.tar.gz -C frontend/out .
 
+      - name: Bundle frontend into wheel package
+        run: cp -r frontend/out sdk/osymandias/frontend_dist
+
       # ── Python wheel ────────────────────────────────────────────────────────
       - uses: actions/setup-python@v5
         with:
