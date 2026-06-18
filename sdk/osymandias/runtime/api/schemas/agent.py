@@ -45,6 +45,9 @@ class AgentDefinitionResponse(BaseModel):
     is_active: bool
     created_at: datetime
     updated_at: datetime | None
+    agent_kind: str | None = None
+    callable_ref: str | None = None
+    framework: str | None = None
 
     model_config = {"from_attributes": True}
 

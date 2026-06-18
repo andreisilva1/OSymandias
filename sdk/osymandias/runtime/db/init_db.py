@@ -501,12 +501,13 @@ async def seed():
                     role="external",
                     system_prompt_template="",  # external agents own their logic
                     allowed_tools=entry.tools,
-                    llm_provider=entry.llm_provider or "ollama",
-                    llm_model=entry.llm_model or "qwen2.5:7b",
+                    llm_provider=entry.llm_provider or "",
+                    llm_model=entry.llm_model or "",
                     input_schema=entry.input_schema,
                     output_schema=entry.output_schema or None,
                     agent_kind=AGENT_KIND_EXTERNAL,
                     callable_ref=entry.callable_ref,
+                    framework=entry.framework,
                     is_active=True,
                 ))
             else:
@@ -516,6 +517,7 @@ async def seed():
                 existing.output_schema = entry.output_schema or existing.output_schema
                 existing.agent_kind = AGENT_KIND_EXTERNAL
                 existing.callable_ref = entry.callable_ref
+                existing.framework = entry.framework
 
         await session.commit()
     logger.info("Seed complete.")

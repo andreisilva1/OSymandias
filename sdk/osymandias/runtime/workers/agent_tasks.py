@@ -230,17 +230,42 @@ def run_planner(self, job_id: str, agent_instance_id: str) -> None:
         session.close()
 
 
+def _resolve_callable_ref(callable_ref: str) -> None:
+    """Import the module that owns callable_ref so its @osy.agent decorators register."""
+    import importlib
+    import sys
+    from pathlib import Path
+
+    cwd = str(Path.cwd())
+    if cwd not in sys.path:
+        sys.path.insert(0, cwd)
+
+    module_path = callable_ref.rsplit(".", 1)[0]
+    for attempt in (module_path, module_path.rsplit(".", 1)[0] if "." in module_path else None):
+        if not attempt:
+            continue
+        try:
+            importlib.import_module(attempt)
+            return
+        except ImportError:
+            continue
+
+
 def _run_external_agent(definition, task, session) -> dict:
     """Dispatch to an @osy.agent-registered callable, injecting OsyContext if declared."""
     from osymandias.decorator import _AGENT_REGISTRY
     from osymandias.runtime.context import OsyContext
 
     entry = _AGENT_REGISTRY.get(definition.name)
+    if not entry and definition.callable_ref:
+        _resolve_callable_ref(definition.callable_ref)
+        entry = _AGENT_REGISTRY.get(definition.name)
+
     if not entry:
         raise RuntimeError(
             f"External agent '{definition.name}' is registered in the DB but not found in "
             f"_AGENT_REGISTRY — ensure the module containing @osy.agent('{definition.name}') "
-            f"is imported before the workers start (check agent_modules in osymandias.toml)."
+            f"is importable from the working directory (check agent_modules in osymandias.toml)."
         )
 
     ctx = OsyContext(job_id=task.job_id, task_id=task.id, session=session)

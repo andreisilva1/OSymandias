@@ -43,6 +43,15 @@ def dispatch_job(self, job_id: str) -> None:
 
         EventEmitter.emit_sync(session, "JOB_STARTED", {}, job_id=job.id)
 
+        # __task_plan__ override: bypass PlannerAgent and directly create tasks.
+        # Useful for tests and programmatic job submission.
+        task_plan = (job.input_payload or {}).get("__task_plan__")
+        if task_plan:
+            _apply_task_plan(session, job, task_plan)
+            session.commit()
+            resolve_dag.apply_async(args=[str(job.id)], queue="scheduler")
+            return
+
         # Create PlannerAgent instance (task_id=None — exists before tasks are created)
         instance = AgentInstance(
             job_id=job.id,
@@ -160,6 +169,45 @@ def resolve_dag(self, job_id: str) -> None:
         logger.exception("resolve_dag failed for job {}: {}", job_id, exc)
     finally:
         session.close()
+
+
+def _apply_task_plan(session, job: Job, task_plan: list[dict]) -> None:
+    """Create Task rows from a pre-defined plan, bypassing PlannerAgent."""
+    from osymandias.runtime.models.task import TaskDependency
+
+    title_to_task: dict[str, Task] = {}
+    for td in task_plan:
+        task = Task(
+            job_id=job.id,
+            title=td["title"],
+            description=td.get("description", ""),
+            status=TaskStatus.PENDING,
+            agent_type=td.get("agent_type", "ResearchAgent"),
+            input_context={
+                "task_description": td.get("description", ""),
+                "job_description": job.description or "",
+            },
+            max_attempts=td.get("max_attempts", 3),
+        )
+        session.add(task)
+        session.flush()
+        title_to_task[td["title"]] = task
+        EventEmitter.emit_sync(
+            session, "TASK_CREATED",
+            {"title": task.title, "agent_type": task.agent_type},
+            job_id=job.id, task_id=task.id,
+        )
+
+    # Wire dependencies after all tasks are created
+    for td in task_plan:
+        task = title_to_task[td["title"]]
+        for dep_title in td.get("depends_on", []):
+            dep_task = title_to_task.get(dep_title)
+            if dep_task:
+                session.add(TaskDependency(task_id=task.id, depends_on_task_id=dep_task.id))
+                task.status = TaskStatus.WAITING
+
+    session.flush()
 
 
 def _mark_ready_and_dispatch(session, task: Task, job: Job) -> None:

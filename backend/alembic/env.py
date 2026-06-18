@@ -10,7 +10,12 @@ from aios.config import settings
 from aios.models import Base  # noqa: F401 — imports all models so Alembic detects them
 
 config = context.config
-config.set_main_option("sqlalchemy.url", settings.postgres_url)
+
+# Only fall back to settings URL if the caller (e.g. osy serve) hasn't already set one.
+# This allows _run_migrations() in the CLI to inject a psycopg2 URL without it being
+# overwritten here, so migrations work on Windows/Python 3.13 where asyncpg DNS fails.
+if not config.get_main_option("sqlalchemy.url", None):
+    config.set_main_option("sqlalchemy.url", settings.postgres_url)
 
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
@@ -48,7 +53,15 @@ async def run_async_migrations() -> None:
 
 
 def run_migrations_online() -> None:
-    asyncio.run(run_async_migrations())
+    url = config.get_main_option("sqlalchemy.url") or ""
+    if "+asyncpg" in url or "+aiopg" in url:
+        asyncio.run(run_async_migrations())
+    else:
+        # Sync path — used by CLI on Windows/Python 3.13 where asyncpg DNS fails.
+        from sqlalchemy import create_engine
+        connectable = create_engine(url, poolclass=pool.NullPool)
+        with connectable.connect() as connection:
+            do_run_migrations(connection)
 
 
 if context.is_offline_mode():

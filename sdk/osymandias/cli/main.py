@@ -266,6 +266,7 @@ def stop():
     compose_path = _find_compose()
     console.print("[dim]Stopping infrastructure...[/dim]")
     subprocess.run(["docker", "compose", "-f", str(compose_path), "stop"], check=False)
+    _kill_local_processes()
     console.print("[green]✓[/green] Infrastructure stopped.  Data preserved.")
 
 
@@ -277,6 +278,7 @@ def down():
     compose_path = _find_compose()
     console.print("[dim]Bringing down containers...[/dim]")
     subprocess.run(["docker", "compose", "-f", str(compose_path), "down"], check=False)
+    _kill_local_processes()
     console.print("[green]✓[/green] Containers removed.  Volumes preserved.")
 
 
@@ -296,6 +298,12 @@ def delete():
         raise typer.Exit(0)
 
     console.print("[dim]Removing containers and volumes...[/dim]")
+    # Force-remove containers first so named volumes are not "in use"
+    subprocess.run(
+        ["docker", "compose", "-f", str(compose_path), "down", "--timeout", "5"],
+        check=False,
+        capture_output=True,
+    )
     subprocess.run(
         ["docker", "compose", "-f", str(compose_path), "down", "--volumes", "--remove-orphans"],
         check=False,
@@ -312,6 +320,47 @@ def _require_docker() -> None:
         console.print("[red bold]✗ Docker is not running.[/red bold]")
         console.print("  Install Docker from https://docker.com and start the daemon.")
         raise typer.Exit(1)
+
+
+def _kill_local_processes() -> None:
+    """Kill any local Python processes still bound to osy ports (API + tool server)."""
+    import signal
+    ports = [RUNTIME_PORT, TOOL_SERVER_PORT]
+    killed = []
+    try:
+        import psutil
+        for proc in psutil.process_iter(["pid", "connections"]):
+            try:
+                for conn in proc.connections(kind="inet"):
+                    if conn.laddr.port in ports and conn.status == "LISTEN":
+                        proc.kill()
+                        killed.append(proc.pid)
+                        break
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                pass
+    except ImportError:
+        # psutil not available — fall back to platform-specific approach
+        if sys.platform == "win32":
+            for port in ports:
+                result = subprocess.run(
+                    ["netstat", "-ano"],
+                    capture_output=True, text=True,
+                )
+                for line in result.stdout.splitlines():
+                    if f":{port} " in line and "LISTENING" in line:
+                        parts = line.split()
+                        pid = parts[-1]
+                        if pid.isdigit():
+                            subprocess.run(["taskkill", "/F", "/PID", pid], capture_output=True)
+                            killed.append(int(pid))
+        else:
+            for port in ports:
+                subprocess.run(
+                    ["fuser", "-k", f"{port}/tcp"],
+                    capture_output=True,
+                )
+    if killed:
+        console.print(f"[dim]  Stopped local processes: {killed}[/dim]")
 
 
 def _find_compose() -> Path:
@@ -380,9 +429,13 @@ def _run_migrations() -> None:
     runtime_dir = Path(__file__).parent.parent / "runtime"
     db_url = os.environ.get("OSY_POSTGRES_URL", "postgresql+asyncpg://osy:osy@localhost:47762/osymandias")
 
+    # Alembic env.py uses a sync engine — swap asyncpg for psycopg2 so
+    # migrations work on all platforms without an asyncio event loop.
+    sync_url = db_url.replace("postgresql+asyncpg://", "postgresql+psycopg2://")
+
     cfg = Config()
     cfg.set_main_option("script_location", str(runtime_dir / "alembic"))
-    cfg.set_main_option("sqlalchemy.url", db_url)
+    cfg.set_main_option("sqlalchemy.url", sync_url)
 
     try:
         alembic_command.upgrade(cfg, "head")

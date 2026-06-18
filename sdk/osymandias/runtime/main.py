@@ -9,7 +9,10 @@ from osymandias.runtime.observability.logging import setup_logging
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     setup_logging()
+    from pathlib import Path
+    from osymandias.discovery import discover_agents
     from osymandias.runtime.db.init_db import seed
+    discover_agents(Path.cwd())
     await seed()
     yield
 

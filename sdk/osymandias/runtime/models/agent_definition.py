@@ -31,6 +31,7 @@ class AgentDefinition(Base, TimestampMixin):
     output_schema: Mapped[dict | None] = mapped_column(JSONB)
     agent_kind: Mapped[str] = mapped_column(String(20), nullable=False, default=AGENT_KIND_BUILTIN)
     callable_ref: Mapped[str | None] = mapped_column(Text)
+    framework: Mapped[str | None] = mapped_column(String(64))
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 

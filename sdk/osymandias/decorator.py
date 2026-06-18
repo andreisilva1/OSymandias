@@ -1,6 +1,6 @@
 import inspect
-from dataclasses import dataclass, field
-from typing import Any, Callable
+from dataclasses import dataclass
+from typing import Callable
 
 from osymandias.schema import infer_schema
 
@@ -21,12 +21,13 @@ class _AgentEntry:
     name: str
     description: str
     fn: Callable
-    callable_ref: str          # "module.qualname" for discovery
-    output_schema: dict        # JSON Schema or {}
-    input_schema: dict         # JSON Schema or {}
+    callable_ref: str
+    output_schema: dict
+    input_schema: dict
     tools: list[str]
     llm_model: str | None
     llm_provider: str | None
+    framework: str | None
 
 
 def _extract_description(fn: Callable) -> str:
@@ -64,14 +65,23 @@ class _Osy:
         tools: list[str] | None = None,
         llm_model: str | None = None,
         llm_provider: str | None = None,
+        framework: str | None = None,
     ) -> Callable:
         """Register a callable as an external OSymandias agent.
 
-        Usage::
+        All keyword arguments are optional metadata used by the dashboard.
+        They do not affect execution — the agent runs regardless of what is declared.
 
-            @osy.agent("MyAgent")
-            def my_agent(task: str, ctx: OsyContext) -> dict:
-                ...
+        Args:
+            name:          Display name and dispatch key.
+            description:   Human-readable description shown in the dashboard.
+            framework:     Explicit framework declaration, e.g. "crewai", "langchain",
+                           "llamaindex", "smolagents", "autogen". Purely cosmetic.
+            llm_provider:  Provider used internally, e.g. "ollama", "openai".
+            llm_model:     Model used internally, e.g. "qwen2.5:7b".
+            tools:         Tool names this agent is known to use.
+            input_schema:  Pydantic model or JSON Schema dict describing expected input.
+            output_schema: Pydantic model or JSON Schema dict describing output shape.
         """
         def decorator(fn: Callable) -> Callable:
             out_schema: dict = {}
@@ -98,6 +108,7 @@ class _Osy:
                 tools=tools or [],
                 llm_model=llm_model,
                 llm_provider=llm_provider,
+                framework=framework,
             )
             _AGENT_REGISTRY[name] = entry
             return fn

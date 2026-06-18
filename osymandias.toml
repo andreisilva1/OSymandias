@@ -1,0 +1,8 @@
+agent_modules = [
+    "fut_dev.agents.simple_agents",
+    "fut_dev.agents.context_agents",
+    "fut_dev.agents.subtask_agent",
+    "fut_dev.agents.multimodal_agent",
+    "fut_dev.agents.langchain_agent",
+    "fut_dev.agents.crewai_agent",
+]

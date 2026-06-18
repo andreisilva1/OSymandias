@@ -76,6 +76,9 @@ export interface AgentDefinition {
   is_active: boolean;
   created_at: string;
   updated_at?: string;
+  agent_kind?: "builtin" | "external";
+  callable_ref?: string;
+  framework?: string;
 }
 
 export type AgentInstanceStatus =
