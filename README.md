@@ -10,6 +10,7 @@
 [![Python](https://img.shields.io/badge/python-3.11+-blue?style=flat-square)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green?style=flat-square)](LICENSE)
 [![Tests](https://github.com/andreisilva1/OSymandias/actions/workflows/tests.yml/badge.svg)](https://github.com/andreisilva1/OSymandias/actions/workflows/tests.yml)
+[![Status](https://img.shields.io/badge/status-in%20development-orange?style=flat-square)](https://github.com/andreisilva1/OSymandias)
 
 📖 **[Full documentation → DOCS.md](DOCS.md)**
 
