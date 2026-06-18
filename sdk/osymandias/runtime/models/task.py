@@ -53,6 +53,9 @@ class Task(Base, TimestampMixin):
     max_attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=3)
     evaluation_score: Mapped[float | None] = mapped_column(Float)
     evaluation_feedback: Mapped[str | None] = mapped_column(Text)
+    parent_task_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tasks.id", ondelete="CASCADE"), nullable=True, index=True
+    )
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 

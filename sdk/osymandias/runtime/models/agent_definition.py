@@ -10,6 +10,9 @@ from osymandias.runtime.models.base import Base, TimestampMixin
 if TYPE_CHECKING:
     from osymandias.runtime.models.agent_instance import AgentInstance
 
+AGENT_KIND_BUILTIN = "builtin"
+AGENT_KIND_EXTERNAL = "external"
+
 
 class AgentDefinition(Base, TimestampMixin):
     __tablename__ = "agent_definitions"
@@ -24,7 +27,10 @@ class AgentDefinition(Base, TimestampMixin):
     llm_model: Mapped[str] = mapped_column(String(100), nullable=False, default="llama3.2")
     max_iterations: Mapped[int] = mapped_column(Integer, nullable=False, default=20)
     timeout_seconds: Mapped[int] = mapped_column(Integer, nullable=False, default=120)
+    input_schema: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
     output_schema: Mapped[dict | None] = mapped_column(JSONB)
+    agent_kind: Mapped[str] = mapped_column(String(20), nullable=False, default=AGENT_KIND_BUILTIN)
+    callable_ref: Mapped[str | None] = mapped_column(Text)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
