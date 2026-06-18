@@ -11,6 +11,8 @@
 [![License](https://img.shields.io/badge/license-MIT-green?style=flat-square)](LICENSE)
 [![Tests](https://github.com/andreisilva1/OSymandias/actions/workflows/tests.yml/badge.svg)](https://github.com/andreisilva1/OSymandias/actions/workflows/tests.yml)
 
+📖 **[Full documentation → DOCS.md](DOCS.md)**
+
 </div>
 
 ---
