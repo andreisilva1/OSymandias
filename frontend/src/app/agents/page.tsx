@@ -77,9 +77,20 @@ function schemaToFields(schema: Record<string,unknown> | undefined): SchemaField
   if (!schema || typeof schema !== "object") return [];
   const props = (schema as any).properties ?? {};
   const req: string[] = (schema as any).required ?? [];
-  return Object.entries(props).map(([key, def]: [string, any]) => ({
-    key, type: def?.type ?? "string", required: req.includes(key),
-  }));
+  return Object.entries(props).map(([key, def]: [string, any]) => {
+    // direct type
+    let type: string = def?.type;
+    // Pydantic v2 Optional → anyOf: [{type: X}, {type: "null"}]
+    if (!type && Array.isArray(def?.anyOf)) {
+      const nonNull = def.anyOf.find((t: any) => t.type && t.type !== "null");
+      type = nonNull?.type;
+    }
+    // $ref → object
+    if (!type && def?.$ref) type = "object";
+    // integer → number (for display bucketing)
+    if (type === "integer") type = "number";
+    return { key, type: type ?? "string", required: req.includes(key) };
+  });
 }
 
 function fieldsToSchema(fields: SchemaField[]): Record<string,unknown> {
@@ -99,10 +110,10 @@ function SchemaDisplay({ fields }: { fields: SchemaField[] }) {
   return (
     <div className="space-y-1">
       {fields.map((f, i) => (
-        <div key={i} className="flex items-center gap-2 px-3 py-1.5 border border-border bg-background rounded-[var(--radius)] text-[11px]">
-          <span className="font-mono text-bright">{f.key}</span>
-          <span className="text-muted-foreground/40">{f.type}</span>
-          <span className={`ml-auto text-[8px] px-1.5 py-0.5 border rounded ${f.required ? "border-amber/40 text-amber" : "border-border text-muted-foreground"}`}>
+        <div key={i} className="flex items-center gap-2 px-3 py-1.5 border border-border bg-background rounded-[var(--radius)] text-[11px] min-w-0">
+          <span className="font-mono text-bright shrink-0 max-w-[160px] truncate" title={f.key}>{f.key}</span>
+          <span className="text-muted-foreground/40 shrink-0">{f.type}</span>
+          <span className={`ml-auto shrink-0 text-[8px] px-1.5 py-0.5 border rounded ${f.required ? "border-amber/40 text-amber" : "border-border text-muted-foreground/50"}`}>
             {f.required ? "req" : "opt"}
           </span>
         </div>

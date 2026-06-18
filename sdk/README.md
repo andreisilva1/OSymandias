@@ -4,8 +4,10 @@
 
 ```bash
 pip install -e .   # editable install for development
-osy init           # setup project
-osy serve          # start runtime
+osy init           # scaffold config files
+osy serve          # start runtime + register agents/tools
 ```
+
+Exposes `@osy.tool` (built-in tool functions), `@osy.agent` (external agent registration), and `OsyContext` (shared memory, events, sub-tasks).
 
 See the [root README](../README.md) for full documentation.
