@@ -679,7 +679,12 @@ def _resolve_compose(cwd: Path) -> Path:
 
 
 def _resolve_frontend_dir(cwd: Path) -> "Path | None":
-    # 1. Bundled inside the installed wheel — preferred, works offline
+    # 1. Local build — always wins in dev so edits show immediately
+    local_out = cwd / "frontend" / "out"
+    if local_out.exists() and any(local_out.iterdir()):
+        return local_out
+
+    # 2. Bundled inside the installed wheel — offline fallback
     try:
         import osymandias as _pkg
         bundled = Path(_pkg.__file__).parent / "frontend_dist"
@@ -688,15 +693,12 @@ def _resolve_frontend_dir(cwd: Path) -> "Path | None":
     except Exception:
         pass
 
-    # 2. GitHub asset fetch / local dev build
+    # 3. GitHub asset fetch / cache
     try:
         from osymandias.assets import ensure_frontend
         return ensure_frontend()
     except Exception:
         pass
-    local_out = cwd / "frontend" / "out"
-    if local_out.exists() and any(local_out.iterdir()):
-        return local_out
     return None
 
 

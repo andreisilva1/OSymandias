@@ -8,6 +8,7 @@
 
 1. [Installation](#installation)
 2. [CLI reference](#cli-reference)
+   - [osy --version](#osy---version)
 3. [Authentication](#authentication)
 4. [@osy.tool — built-in tools](#osytool)
 5. [@osy.agent — external agents](#osyagent)
@@ -20,6 +21,9 @@
    - [Smolagents](#smolagents)
    - [OpenAI Agents SDK](#openai-agents-sdk)
 9. [Submitting jobs via API](#submitting-jobs-via-api)
+   - [Natural language job](#natural-language-job)
+   - [Explicit task plan (`__task_plan__`)](#explicit-task-plan-__task_plan__)
+   - [Resubmitting a job](#resubmitting-a-job)
 10. [Dashboard pages](#dashboard-pages)
 11. [Supported LLM providers](#supported-llm-providers)
 12. [Scaling](#scaling)
@@ -51,6 +55,17 @@ pip install osymandias[all]
 ---
 
 ## CLI reference
+
+### `osy --version`
+
+Print the installed version and exit.
+
+```bash
+osy --version   # osy 0.3.0
+osy -V
+```
+
+---
 
 ### `osy init`
 
@@ -735,7 +750,9 @@ Calls `Runner.run_sync(agent, task)`. Emits one `TASK_PROGRESS` event per handof
 
 ## Submitting jobs via API
 
-### REST
+### Natural language job
+
+Let the PlannerAgent decompose the goal into tasks automatically:
 
 ```bash
 curl -X POST http://localhost:47760/api/v1/jobs \
@@ -749,6 +766,38 @@ curl -X POST http://localhost:47760/api/v1/jobs \
 ```
 
 **Priority values:** `"LOW"` · `"NORMAL"` · `"HIGH"` · `"CRITICAL"`
+
+### Explicit task plan (`__task_plan__`)
+
+Bypass the PlannerAgent entirely by providing a task list directly in `input_payload`. Useful when you know exactly which agents to run and in what order:
+
+```bash
+curl -X POST http://localhost:47760/api/v1/jobs \
+  -H "Content-Type: application/json" \
+  -d '{
+    "title": "EV Market Report",
+    "description": "EV market research",
+    "priority": "NORMAL",
+    "input_payload": {
+      "__task_plan__": [
+        {"title": "Research",      "agent_type": "ResearchAgent", "description": "EV market in Europe 2024"},
+        {"title": "Write Report",  "agent_type": "WriterAgent",   "description": "Write a structured report from research findings"}
+      ]
+    }
+  }'
+```
+
+Each entry in `__task_plan__` accepts the same keys as `ctx.spawn_tasks` task defs: `title` (required), `agent_type`, `description`.
+
+### Resubmitting a job
+
+Copy a completed or failed job's input and create a new run:
+
+```bash
+curl -X POST http://localhost:47760/api/v1/jobs/<job-id>/resubmit
+```
+
+Returns the new job object. The original job is unchanged. The resubmit button is also available in the dashboard job detail view for any terminal job (COMPLETED, FAILED, CANCELLED).
 
 ### Python
 
@@ -774,12 +823,16 @@ Full interactive API docs: **http://localhost:47760/api/v1/docs**
 | Page | URL | Description |
 |------|-----|-------------|
 | Jobs | `/jobs` | Job list — search, filter by status, pagination |
-| Job detail | `/jobs/{id}` | Output viewer (JSON/markdown/image/audio), events feed, task tree timeline |
+| Job detail | `/jobs/{id}` | Output viewer (JSON/markdown/image/audio), events feed, task tree timeline, resubmit button |
 | Agents | `/agents` | Agent registry — builtin and external agents, adaptive detail panel, filter by type/framework |
 | Tools | `/tools` | Built-in tools and `@osy.tool` functions |
 | Memory | `/memory` | Browse and search job/agent memory entries, delete individual keys |
 | Events | `/events` | Global live event stream — pause/resume, filter by job |
 | Metrics | `/metrics` | 7-day charts: jobs, tokens, cost estimate, success rate |
+
+### Live output preview
+
+While a job is running, the OUTPUT tab shows a live preview of in-progress tasks. Each time an agent calls `ctx.emit_event("TASK_PROGRESS", {...})`, the dashboard updates the task card in real time via SSE — no polling required. Once the job completes and `output_payload` is available, the final output replaces the preview automatically.
 
 ---
 

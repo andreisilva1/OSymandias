@@ -39,25 +39,8 @@ export function JobDetailClient({ id: staticId }: { id: string }) {
   const { data: agentInstances = [] } = useJobAgentInstances(id);
   const { events } = useJobStream(id);
 
-  if (isLoading || !job) {
-    return (
-      <div className="flex items-center justify-center h-full gap-2 text-muted-foreground text-[13px]">
-        <Loader2 className="w-4 h-4 animate-spin" /> loading process…
-      </div>
-    );
-  }
+  const isTerminal = job ? ["COMPLETED", "FAILED", "CANCELLED"].includes(job.status) : false;
 
-  const duration =
-    job.started_at && job.completed_at
-      ? new Date(job.completed_at).getTime() - new Date(job.started_at).getTime()
-      : job.started_at
-      ? Date.now() - new Date(job.started_at).getTime()
-      : undefined;
-
-  const isTerminal = ["COMPLETED", "FAILED", "CANCELLED"].includes(job.status);
-
-  // Derive latest TASK_PROGRESS payload per task from the live SSE stream.
-  // Used as a live preview when output_payload is not yet available.
   const liveProgress = useMemo(() => {
     if (isTerminal) return {};
     const taskById = Object.fromEntries(tasks.map((t) => [t.id, t.title]));
@@ -72,6 +55,21 @@ export function JobDetailClient({ id: staticId }: { id: string }) {
     }
     return result;
   }, [events, tasks, isTerminal]);
+
+  if (isLoading || !job) {
+    return (
+      <div className="flex items-center justify-center h-full gap-2 text-muted-foreground text-[13px]">
+        <Loader2 className="w-4 h-4 animate-spin" /> loading process…
+      </div>
+    );
+  }
+
+  const duration =
+    job.started_at && job.completed_at
+      ? new Date(job.completed_at).getTime() - new Date(job.started_at).getTime()
+      : job.started_at
+      ? Date.now() - new Date(job.started_at).getTime()
+      : undefined;
 
   async function handleResubmit() {
     setResubmitting(true);

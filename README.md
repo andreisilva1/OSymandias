@@ -52,6 +52,16 @@ To manage the runtime:
 osy stop    # pause containers, keep data
 osy down    # remove containers, keep volumes
 osy delete  # remove containers + volumes (asks for confirmation)
+osy --version  # print installed version
+```
+
+Tail events from the CLI:
+
+```bash
+osy logs                        # last 50 events across all jobs
+osy logs <job-id>               # last 50 events for a specific job
+osy logs <job-id> -f            # live-stream as they arrive
+osy logs <job-id> -f -t TASK_PROGRESS  # filter by event type
 ```
 
 Scale up concurrency or add worker nodes:
@@ -234,9 +244,18 @@ Switch models per-agent from the dashboard — no restart required.
 ## Spawning a job via API
 
 ```bash
+# Natural language — PlannerAgent decomposes it automatically
 curl -X POST http://localhost:47760/api/v1/jobs \
   -H "Content-Type: application/json" \
   -d '{"title":"My Job","description":"Research the EV market in Europe in 2024.","priority":"NORMAL","input_payload":{}}'
+
+# Bypass the planner with an explicit task plan
+curl -X POST http://localhost:47760/api/v1/jobs \
+  -H "Content-Type: application/json" \
+  -d '{"title":"My Job","description":"...","priority":"NORMAL","input_payload":{"__task_plan__":[{"title":"Research","agent_type":"ResearchAgent","description":"EV market in Europe"}]}}'
+
+# Resubmit a completed or failed job (copies input, creates a new job)
+curl -X POST http://localhost:47760/api/v1/jobs/<job-id>/resubmit
 ```
 
 Full API reference: **http://localhost:47760/api/v1/docs**
@@ -249,7 +268,7 @@ Full API reference: **http://localhost:47760/api/v1/docs**
 OSymandias/
 ├── sdk/                  Python package — osymandias + osy CLI
 │   └── osymandias/
-│       ├── cli/          osy init / serve / stop / down / delete
+│       ├── cli/          osy init / serve / stop / down / delete / logs / workers
 │       ├── runtime/      FastAPI + Celery + agents
 │       ├── decorator.py  @osy.tool + @osy.agent
 │       ├── context.py    OsyContext (memory, events, sub-tasks)
@@ -257,9 +276,8 @@ OSymandias/
 │       ├── tool_server.py  local HTTP tool server
 │       ├── assets.py     GitHub asset fetcher + cache
 │       └── process.py    subprocess manager
-├── frontend/             Next.js 14 dashboard (built by CI, not bundled in wheel)
+├── frontend/             Next.js 14 dashboard (built by CI, bundled into wheel)
 ├── backend/              Legacy standalone backend (kept for reference)
-├── fut_dev/              Slide assets + publication
 └── .github/workflows/
     └── release.yml       Tag push → build → GitHub Release + PyPI
 ```
