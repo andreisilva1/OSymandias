@@ -134,6 +134,11 @@ def serve(
         help="Skip Docker — connect to externally managed services via OSY_* env vars.",
         envvar="OSY_NO_DOCKER",
     ),
+    concurrency: int = typer.Option(
+        4, "--concurrency",
+        help="Number of concurrent Celery worker slots (default 4).",
+        envvar="OSY_WORKER_CONCURRENCY",
+    ),
 ):
     """Start the full OSymandias runtime."""
     from osymandias.process import ProcessManager
@@ -255,7 +260,7 @@ def serve(
         "worker",
         f"--pool={pool}",
         "--loglevel=warning",
-        "--concurrency=4",
+        f"--concurrency={concurrency}",
     ])
 
     time.sleep(2)
@@ -280,6 +285,67 @@ def serve(
     console.print(Panel(lines, title="[green]OSymandias ready[/green]", border_style="green", padding=(0, 1)))
 
     manager.wait_all()
+
+
+# ─── osy workers ─────────────────────────────────────────────────────────────
+
+@app.command()
+def workers(
+    queues: str = typer.Option(
+        "agents,tools,evaluator",
+        "--queues",
+        help="Comma-separated list of Celery queues to consume (default: agents,tools,evaluator).",
+        envvar="OSY_WORKER_QUEUES",
+    ),
+    concurrency: int = typer.Option(
+        4, "--concurrency",
+        help="Number of concurrent worker slots (default 4).",
+        envvar="OSY_WORKER_CONCURRENCY",
+    ),
+    loglevel: str = typer.Option(
+        "warning", "--loglevel",
+        help="Celery log level (debug|info|warning|error).",
+    ),
+):
+    """Start additional Celery workers for horizontal scaling.
+
+    Run this on any machine that can reach the same RabbitMQ and Redis
+    instances (set OSY_RABBITMQ_URL and OSY_REDIS_URL in the environment
+    or in a local .env file).  The API server does NOT need to run on
+    the same machine.
+
+    Example — two extra worker nodes:\n
+        # node-2\n
+        OSY_RABBITMQ_URL=amqp://... OSY_REDIS_URL=redis://... osy workers\n\n
+        # node-3 (agents only, 8 slots)\n
+        osy workers --queues agents --concurrency 8
+    """
+    cwd = Path.cwd()
+
+    # Load .env if present
+    env_file = cwd / ENV_FILENAME
+    if env_file.exists():
+        from dotenv import load_dotenv
+        load_dotenv(env_file, override=True)
+
+    console.print(f"\n[bold cyan]osy workers[/bold cyan]  queues=[cyan]{queues}[/cyan]  concurrency=[cyan]{concurrency}[/cyan]\n")
+
+    pool = "solo" if sys.platform == "win32" else "prefork"
+    cmd = [
+        sys.executable, "-m", "celery",
+        "-A", "osymandias.runtime.workers.celery_app",
+        "worker",
+        f"--pool={pool}",
+        f"--loglevel={loglevel}",
+        f"--concurrency={concurrency}",
+        f"--queues={queues}",
+    ]
+
+    console.print(f"[dim]Starting worker: {' '.join(cmd[2:])}[/dim]")
+    try:
+        subprocess.run(cmd, check=True)
+    except KeyboardInterrupt:
+        console.print("\n[dim]Workers stopped.[/dim]")
 
 
 # ─── osy stop ────────────────────────────────────────────────────────────────
@@ -582,6 +648,11 @@ OSY_CORS_ORIGINS=http://localhost:{FRONTEND_PORT},http://localhost:{RUNTIME_PORT
 
 # Tool server (internal)
 OSY_TOOL_SERVER_URL=http://localhost:{TOOL_SERVER_PORT}
+
+# Scaling — number of concurrent Celery worker slots on this node.
+# Increase for CPU-bound workloads; run `osy workers` on additional
+# machines to scale horizontally.
+# OSY_WORKER_CONCURRENCY=4
 """, encoding="utf-8")
 
 

@@ -21,7 +21,8 @@
 8. [Submitting jobs via API](#submitting-jobs-via-api)
 9. [Dashboard pages](#dashboard-pages)
 10. [Supported LLM providers](#supported-llm-providers)
-11. [Optional dependencies](#optional-dependencies)
+11. [Scaling](#scaling)
+12. [Optional dependencies](#optional-dependencies)
 
 ---
 
@@ -77,7 +78,7 @@ Safe to re-run — existing files are skipped.
 Start the full runtime.
 
 ```
-osy serve [--no-docker]
+osy serve [--no-docker] [--concurrency N]
 ```
 
 Starts Docker containers, runs DB migrations, discovers `@osy.tool` and `@osy.agent` callables, and launches:
@@ -104,6 +105,26 @@ osy serve --no-docker
 ```
 
 `osy serve --no-docker` verifies connectivity to all configured services before starting and gives a clear error if any are unreachable. `osy stop` and `osy down` skip Docker gracefully when not available.
+
+**`--concurrency N`** — number of concurrent Celery worker slots on this node (default 4). Also reads from `OSY_WORKER_CONCURRENCY` in `.env`.
+
+---
+
+### `osy workers`
+
+Start **additional** Celery workers for horizontal scaling. No API server, no Docker — just worker processes connecting to the shared RabbitMQ and Redis.
+
+```
+osy workers [--queues QUEUES] [--concurrency N] [--loglevel LEVEL]
+```
+
+| Option | Default | Env var |
+|---|---|---|
+| `--queues` | `agents,tools,evaluator` | `OSY_WORKER_QUEUES` |
+| `--concurrency` | `4` | `OSY_WORKER_CONCURRENCY` |
+| `--loglevel` | `warning` | — |
+
+Run this on any machine that can reach the same broker/backend. See [Scaling](#scaling).
 
 ---
 
@@ -716,6 +737,68 @@ Configured during `osy init` or by editing `.env` directly.
 | Gemini | `GEMINI_API_KEY` | `gemini-2.0-flash` |
 
 Models can be changed per-agent from the dashboard without restarting the runtime.
+
+---
+
+## Scaling
+
+OSymandias scales horizontally by running additional Celery worker processes on separate machines. The API server, scheduler, and workers are independent — only RabbitMQ (task queue) and Redis (results + pub/sub) need to be reachable from all nodes.
+
+### Queue architecture
+
+| Queue | Handles | Concurrency recommendation |
+|---|---|---|
+| `scheduler` | DAG resolution, job dispatch | 1 (single-worker, avoid race conditions) |
+| `agents` | Agent loops (LLM calls) | Scale out — most CPU/wait time here |
+| `tools` | `@osy.tool` and webhook calls | Scale with agent workers |
+| `evaluator` | Output scoring | Low volume; 1-2 slots sufficient |
+
+The `scheduler` queue should stay on one machine (the one running `osy serve`). `agents`, `tools`, and `evaluator` can be distributed freely.
+
+### Local concurrency
+
+Increase slots on a single machine via `--concurrency` or `.env`:
+
+```bash
+# .env
+OSY_WORKER_CONCURRENCY=8
+
+# or at startup
+osy serve --concurrency 8
+```
+
+### Horizontal scaling (multiple machines)
+
+```bash
+# ── Machine A — runs API + scheduler ──────────────────────────────
+osy serve --no-docker   # or with Docker
+
+# ── Machine B — extra agent workers ───────────────────────────────
+# Point to the shared broker/redis in .env or env vars
+OSY_RABBITMQ_URL=amqp://user:pass@machine-a:47764/ \
+OSY_REDIS_URL=redis://machine-a:47763/0 \
+osy workers --queues agents,tools --concurrency 8
+
+# ── Machine C — dedicated evaluator ───────────────────────────────
+OSY_RABBITMQ_URL=amqp://user:pass@machine-a:47764/ \
+OSY_REDIS_URL=redis://machine-a:47763/0 \
+osy workers --queues evaluator --concurrency 2
+```
+
+Worker nodes need `osymandias` installed and access to the same `osymandias.toml` (or the same `@osy.agent` modules importable). They do **not** need PostgreSQL access — the API server is the only process that talks directly to Postgres.
+
+### Kubernetes / container deployments
+
+Each Celery worker is a stateless process. A typical deployment:
+
+| Deployment | Command | Replicas |
+|---|---|---|
+| API | `uvicorn osymandias.runtime.main:app` | 1-2 |
+| Agent workers | `celery -A osymandias.runtime.workers.celery_app worker --queues agents,tools` | N |
+| Scheduler | `celery -A osymandias.runtime.workers.celery_app worker --queues scheduler --concurrency 1` | 1 |
+| Beat | `celery -A osymandias.runtime.workers.celery_app beat` | 1 |
+
+All worker containers share the same RabbitMQ broker and Redis backend via environment variables.
 
 ---
 

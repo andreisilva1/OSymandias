@@ -54,6 +54,16 @@ osy down    # remove containers, keep volumes
 osy delete  # remove containers + volumes (asks for confirmation)
 ```
 
+Scale up concurrency or add worker nodes:
+
+```bash
+# More slots on this machine
+osy serve --concurrency 8   # or OSY_WORKER_CONCURRENCY=8 in .env
+
+# Additional worker nodes (point to the same broker/redis)
+OSY_RABBITMQ_URL=amqp://... OSY_REDIS_URL=redis://... osy workers --queues agents,tools --concurrency 8
+```
+
 **No Docker?** Use `--no-docker` to connect to externally managed services instead:
 
 ```bash
