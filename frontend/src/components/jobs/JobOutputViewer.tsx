@@ -3,7 +3,79 @@
 import { useState, useCallback } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { Check, Clipboard, Code2, Eye, Download } from "lucide-react";
+import { Check, Clipboard, Code2, Eye, Download, X } from "lucide-react";
+
+interface MediaItem {
+  type: "image" | "pdf";
+  url?: string;
+  base64?: string;
+  caption?: string;
+  title?: string;
+}
+
+function MediaGallery({ items }: { items: MediaItem[] }) {
+  const [lightbox, setLightbox] = useState<string | null>(null);
+
+  return (
+    <>
+      <div className="flex flex-wrap gap-3 px-5 py-3 border-t border-border/50">
+        {items.map((item, i) => {
+          const src = item.base64 ?? item.url ?? "";
+          if (item.type === "image") {
+            return (
+              <div key={i} className="flex flex-col gap-1">
+                <img
+                  src={src}
+                  alt={item.caption ?? `image-${i}`}
+                  className="max-h-40 rounded border border-border cursor-zoom-in object-contain bg-background"
+                  onClick={() => setLightbox(src)}
+                />
+                {item.caption && (
+                  <span className="text-[10px] text-muted-foreground text-center">{item.caption}</span>
+                )}
+              </div>
+            );
+          }
+          if (item.type === "pdf") {
+            return (
+              <a
+                key={i}
+                href={src}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-2 text-[11px] text-cyan border border-border/50 rounded px-3 py-2 hover:bg-accent/40 transition-colors"
+              >
+                <Download className="w-3.5 h-3.5" />
+                {item.title ?? `document-${i}.pdf`}
+              </a>
+            );
+          }
+          return null;
+        })}
+      </div>
+
+      {lightbox && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm"
+          onClick={() => setLightbox(null)}
+        >
+          <button
+            className="absolute top-4 right-4 text-white/60 hover:text-white"
+            onClick={() => setLightbox(null)}
+          >
+            <X className="w-6 h-6" />
+          </button>
+          <img
+            src={lightbox}
+            alt="lightbox"
+            className="max-w-[90vw] max-h-[90vh] rounded object-contain"
+            onClick={(e) => e.stopPropagation()}
+          />
+        </div>
+      )}
+    </>
+  );
+}
 
 const AGENT_COLORS: Record<string, string> = {
   ResearchAgent:  "text-cyan   border-cyan/20   bg-cyan/5",
@@ -242,6 +314,9 @@ export function JobOutputViewer({ outputPayload, tasks = [] }: JobOutputViewerPr
                   <pre className="text-[11px] bg-background text-muted-foreground/80 px-5 py-4 overflow-auto leading-relaxed font-mono max-h-[60vh]">
                     {text}
                   </pre>
+                )}
+                {Array.isArray((entry.result as Record<string, unknown>)?._media) && (
+                  <MediaGallery items={(entry.result as Record<string, unknown>)._media as MediaItem[]} />
                 )}
               </div>
             )}

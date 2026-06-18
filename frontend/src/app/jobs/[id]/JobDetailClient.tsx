@@ -16,7 +16,7 @@ const TABS: Tab[] = ["OVERVIEW", "TIMELINE", "CALL_GRAPH", "EVENT_LOG", "SYSCALL
 
 const EV_COLOR: Record<string, string> = {
   JOB_CREATED:"text-cyan", JOB_STARTED:"text-cyan", JOB_COMPLETED:"text-green", JOB_FAILED:"text-red",
-  TASK_COMPLETED:"text-green", TASK_FAILED:"text-red",
+  TASK_STARTED:"text-blue", TASK_CREATED:"text-cyan", TASK_COMPLETED:"text-green", TASK_FAILED:"text-red", TASK_PROGRESS:"text-amber",
   AGENT_STARTED:"text-purple", AGENT_ITERATION:"text-muted-foreground", AGENT_COMPLETED:"text-green", AGENT_CRASHED:"text-red",
   TOOL_CALLED:"text-amber", TOOL_SUCCEEDED:"text-green", TOOL_FAILED:"text-red",
 };
