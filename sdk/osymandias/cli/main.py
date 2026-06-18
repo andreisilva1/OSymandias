@@ -11,12 +11,31 @@ import typer
 from rich.console import Console
 from rich.prompt import Prompt
 
+def _version_callback(value: bool) -> None:
+    if value:
+        import osymandias
+        console.print(f"osy {osymandias.__version__}")
+        raise typer.Exit()
+
+
 app = typer.Typer(
     name="osy",
     help="OSymandias — multi-agent runtime CLI",
     add_completion=False,
 )
 console = Console()
+
+
+@app.callback()
+def _main(
+    version: bool = typer.Option(
+        False, "--version", "-V",
+        callback=_version_callback,
+        is_eager=True,
+        help="Show version and exit.",
+    ),
+) -> None:
+    pass
 
 COMPOSE_FILENAME = "OSY.compose.yml"
 NGINX_CONF_FILENAME = "OSY.nginx.conf"
