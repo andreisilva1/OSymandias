@@ -287,6 +287,129 @@ def serve(
     manager.wait_all()
 
 
+# ─── osy logs ────────────────────────────────────────────────────────────────
+
+@app.command()
+def logs(
+    job_id: str = typer.Argument(None, help="Job ID (or prefix) to tail. Omit for all recent events."),
+    follow: bool = typer.Option(False, "--follow", "-f", help="Subscribe to Redis and stream new events in real time."),
+    limit: int = typer.Option(50, "--limit", "-n", help="Number of past events to show (default 50)."),
+    event_type: str = typer.Option(None, "--type", "-t", help="Filter by event type (e.g. TASK_PROGRESS)."),
+):
+    """Tail events for a job or the global event stream.
+
+    Examples:\n
+        osy logs                        # last 50 events across all jobs\n
+        osy logs <job-id>               # last 50 events for a specific job\n
+        osy logs <job-id> -f            # live-stream events as they arrive\n
+        osy logs <job-id> -f -t TASK_PROGRESS  # live-stream only TASK_PROGRESS
+    """
+    import os
+    import httpx
+    from pathlib import Path
+
+    cwd = Path.cwd()
+    env_file = cwd / ENV_FILENAME
+    if env_file.exists():
+        from dotenv import load_dotenv
+        load_dotenv(env_file, override=True)
+
+    api_base = f"http://localhost:{RUNTIME_PORT}/api/v1"
+
+    # ── Resolve full job ID if a prefix was given ────────────────────────────
+    resolved_job_id: str | None = None
+    if job_id:
+        try:
+            with httpx.Client(timeout=5) as c:
+                jobs = c.get(f"{api_base}/jobs", params={"limit": 200}).json()
+            matches = [j for j in jobs if j["id"].startswith(job_id)]
+            if not matches:
+                console.print(f"[red]✗ No job found matching '{job_id}'[/red]")
+                raise typer.Exit(1)
+            resolved_job_id = matches[0]["id"]
+            if len(matches) > 1:
+                console.print(f"[yellow]⚠ Multiple jobs match '{job_id}' — using {resolved_job_id[:8]}[/yellow]")
+        except httpx.ConnectError:
+            console.print(f"[red]✗ Cannot reach {api_base} — is `osy serve` running?[/red]")
+            raise typer.Exit(1)
+
+    # ── Print past events ─────────────────────────────────────────────────────
+    _EV_COLOR = {
+        "JOB_CREATED": "cyan",    "JOB_STARTED": "cyan",
+        "JOB_COMPLETED": "green", "JOB_FAILED": "red",  "JOB_CANCELLED": "yellow",
+        "TASK_CREATED": "cyan",   "TASK_STARTED": "blue",
+        "TASK_COMPLETED": "green","TASK_FAILED": "red",  "TASK_PROGRESS": "yellow",
+        "AGENT_RUNNING": "blue",  "AGENT_TERMINATED": "green",
+        "TOOL_CALL_STARTED": "yellow", "TOOL_CALL_COMPLETED": "green",
+        "LLM_CALL_STARTED": "dim", "LLM_CALL_COMPLETED": "dim",
+        "PLANNER_FALLBACK": "bold red",
+    }
+
+    def _print_event(ev: dict) -> None:
+        ts = ev.get("timestamp", "")[:19].replace("T", " ")
+        etype = ev.get("event_type", "EVENT")
+        color = _EV_COLOR.get(etype, "white")
+        payload = ev.get("payload") or {}
+        task_id = ev.get("task_id", "")
+        tid = f"[dim]{task_id[:8]}[/dim] " if task_id else ""
+        # Pick most informative payload key
+        detail = (
+            payload.get("title") or payload.get("tool_name") or
+            payload.get("agent_type") or payload.get("step") or
+            payload.get("message") or payload.get("reason") or ""
+        )
+        detail_str = f"  [dim]{detail}[/dim]" if detail else ""
+        console.print(f"[dim]{ts}[/dim]  {tid}[{color}]{etype}[/{color}]{detail_str}")
+
+    try:
+        with httpx.Client(timeout=10) as c:
+            params: dict = {"limit": limit}
+            if resolved_job_id:
+                params["job_id"] = resolved_job_id
+            if event_type:
+                params["event_type"] = event_type
+            resp = c.get(f"{api_base}/events", params=params)
+            resp.raise_for_status()
+            past = list(reversed(resp.json()))  # oldest first
+    except Exception as exc:
+        console.print(f"[red]✗ Failed to fetch events: {exc}[/red]")
+        raise typer.Exit(1)
+
+    for ev in past:
+        _print_event(ev)
+
+    if not follow:
+        console.print(f"\n[dim]{len(past)} event(s). Use -f to stream live.[/dim]")
+        return
+
+    # ── Live stream via Redis pub/sub ─────────────────────────────────────────
+    import json as _json
+    import redis as _redis
+    redis_url = os.environ.get("OSY_REDIS_URL", "redis://localhost:47763/0")
+
+    console.print(f"\n[dim]Streaming live events (Ctrl+C to stop)…[/dim]")
+    try:
+        r = _redis.from_url(redis_url, decode_responses=True)
+        pubsub = r.pubsub(ignore_subscribe_messages=True)
+        channel = f"events:job:{resolved_job_id}" if resolved_job_id else "events:global"
+        pubsub.subscribe(channel)
+        for msg in pubsub.listen():
+            if msg["type"] != "message":
+                continue
+            try:
+                ev = _json.loads(msg["data"])
+            except Exception:
+                continue
+            if event_type and ev.get("event_type") != event_type:
+                continue
+            _print_event(ev)
+    except KeyboardInterrupt:
+        console.print("\n[dim]Stopped.[/dim]")
+    except Exception as exc:
+        console.print(f"[red]✗ Redis error: {exc}[/red]")
+        raise typer.Exit(1)
+
+
 # ─── osy workers ─────────────────────────────────────────────────────────────
 
 @app.command()

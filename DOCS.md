@@ -111,6 +111,30 @@ osy serve --no-docker
 
 ---
 
+### `osy logs`
+
+Tail events for a specific job or the global event stream.
+
+```
+osy logs [JOB_ID] [--follow] [--limit N] [--type EVENT_TYPE]
+```
+
+| Option | Default | Description |
+|---|---|---|
+| `JOB_ID` | — | Job ID or unambiguous prefix. Omit for all jobs. |
+| `--follow` / `-f` | off | Subscribe to Redis pub/sub and stream live events |
+| `--limit N` / `-n N` | `50` | Number of past events to print before streaming |
+| `--type` / `-t` | — | Filter by event type (e.g. `TASK_PROGRESS`, `TOOL_CALL_STARTED`) |
+
+```bash
+osy logs                             # last 50 events across all jobs
+osy logs abc123                      # last 50 events for job abc123...
+osy logs abc123 -f                   # live-stream all events for that job
+osy logs abc123 -f -t TASK_PROGRESS  # live-stream only progress events
+```
+
+---
+
 ### `osy workers`
 
 Start **additional** Celery workers for horizontal scaling. No API server, no Docker — just worker processes connecting to the shared RabbitMQ and Redis.
