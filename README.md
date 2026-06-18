@@ -54,6 +54,19 @@ osy down    # remove containers, keep volumes
 osy delete  # remove containers + volumes (asks for confirmation)
 ```
 
+**No Docker?** Use `--no-docker` to connect to externally managed services instead:
+
+```bash
+# Uncomment in .env and point to your own instances:
+# OSY_NO_DOCKER=1
+# OSY_POSTGRES_URL=postgresql+asyncpg://user:pass@host:5432/osymandias
+# OSY_REDIS_URL=redis://host:6379/0
+# OSY_RABBITMQ_URL=amqp://user:pass@host:5672/
+# OSY_QDRANT_URL=http://host:6333
+
+osy serve --no-docker
+```
+
 ---
 
 ## Built-in tool functions (`@osy.tool`)

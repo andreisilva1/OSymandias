@@ -128,7 +128,13 @@ def init():
 # ─── osy serve ───────────────────────────────────────────────────────────────
 
 @app.command()
-def serve():
+def serve(
+    no_docker: bool = typer.Option(
+        False, "--no-docker",
+        help="Skip Docker — connect to externally managed services via OSY_* env vars.",
+        envvar="OSY_NO_DOCKER",
+    ),
+):
     """Start the full OSymandias runtime."""
     from osymandias.process import ProcessManager
     from osymandias.discovery import discover
@@ -139,10 +145,7 @@ def serve():
 
     console.print("\n[bold cyan]osy serve[/bold cyan]\n")
 
-    # 1. Check Docker
-    _require_docker()
-
-    # 2. Load .env
+    # 1. Load .env first so OSY_NO_DOCKER and service URLs are available
     env_file = cwd / ENV_FILENAME
     if env_file.exists():
         from dotenv import load_dotenv
@@ -151,52 +154,71 @@ def serve():
     else:
         console.print(f"[yellow]⚠ No {ENV_FILENAME} found — using environment variables[/yellow]")
 
-    # 3. Resolve OSY.compose.yml
-    compose_path = _resolve_compose(cwd)
-
-    # 4. Resolve frontend + nginx for Docker
+    # Re-read OSY_NO_DOCKER after .env load (envvar= on the Option handles CLI,
+    # but load_dotenv runs after typer parses args, so we check again here)
     import os as _os
-    compose_env = {**_os.environ}
-    frontend_dir = _resolve_frontend_dir(cwd)
+    if not no_docker and _os.environ.get("OSY_NO_DOCKER", "").lower() in ("1", "true", "yes"):
+        no_docker = True
+
+    if no_docker:
+        console.print("[dim]  mode: [bold]no-docker[/bold] — using external services[/dim]")
+
+    # 2. Docker infra (skipped in no-docker mode)
+    compose_env: dict = {}
+    compose_path = None
     with_frontend = False
-    if frontend_dir:
-        nginx_conf = _resolve_nginx_conf(cwd)
-        if nginx_conf:
-            compose_env["OSY_FRONTEND_DIR"] = str(frontend_dir)
-            compose_env["OSY_NGINX_CONF"]   = str(nginx_conf)
-            with_frontend = True
-        else:
-            console.print(f"[yellow]⚠ {NGINX_CONF_FILENAME} not found — dashboard unavailable[/yellow]")
+
+    if no_docker:
+        # Verify that the external services are reachable before starting workers
+        _check_external_services()
     else:
-        console.print(f"[yellow]⚠ No frontend build — run [cyan]npm run dev[/cyan] in frontend/ for the dashboard[/yellow]")
+        # 2a. Check Docker daemon
+        _require_docker()
 
-    # 5. Start infra (nginx starts LAST, after FastAPI is ready)
-    console.print("[dim]↓ Starting infrastructure...[/dim]")
-    subprocess.run(
-        ["docker", "compose", "-f", str(compose_path), "up", "-d"],
-        env=compose_env, check=True,
-    )
-    _wait_healthy(compose_path)
-    console.print(f"[green]✓[/green] Infrastructure  [dim]postgres · redis · rabbitmq · qdrant[/dim]")
+        # 2b. Resolve compose file
+        compose_path = _resolve_compose(cwd)
 
-    # 6. Run migrations
+        # 2c. Resolve frontend + nginx
+        compose_env = {**_os.environ}
+        frontend_dir = _resolve_frontend_dir(cwd)
+        if frontend_dir:
+            nginx_conf = _resolve_nginx_conf(cwd)
+            if nginx_conf:
+                compose_env["OSY_FRONTEND_DIR"] = str(frontend_dir)
+                compose_env["OSY_NGINX_CONF"]   = str(nginx_conf)
+                with_frontend = True
+            else:
+                console.print(f"[yellow]⚠ {NGINX_CONF_FILENAME} not found — dashboard unavailable[/yellow]")
+        else:
+            console.print(f"[yellow]⚠ No frontend build — run [cyan]npm run dev[/cyan] in frontend/ for the dashboard[/yellow]")
+
+        # 2d. Start infra containers
+        console.print("[dim]↓ Starting infrastructure...[/dim]")
+        subprocess.run(
+            ["docker", "compose", "-f", str(compose_path), "up", "-d"],
+            env=compose_env, check=True,
+        )
+        _wait_healthy(compose_path)
+        console.print(f"[green]✓[/green] Infrastructure  [dim]postgres · redis · rabbitmq · qdrant[/dim]")
+
+    # 3. Run migrations
     console.print("[dim]↓ Running database migrations...[/dim]")
     _run_migrations()
     console.print("[dim]✓ Migrations applied[/dim]")
 
-    # 7. Discover @osy.tool functions
+    # 4. Discover @osy.tool functions
     console.print("[dim]↓ Scanning for @osy.tool functions...[/dim]")
-    count = discover(cwd)
+    discover(cwd)
     console.print(f"[dim]✓ {len(_TOOL_REGISTRY)} tool(s) registered[/dim]")
 
-    # 7b. Discover @osy.agent functions (uses agent_modules config or auto-scan)
+    # 4b. Discover @osy.agent functions
     from osymandias.discovery import discover_agents
     from osymandias.decorator import _AGENT_REGISTRY
     agent_count = discover_agents(cwd)
     if agent_count:
         console.print(f"[dim]✓ {agent_count} external agent(s) discovered[/dim]")
 
-    # 8. Start tool server
+    # 5. Start tool server
     manager.start("tool-server", [
         sys.executable, "-m", "uvicorn",
         "osymandias.tool_server:app",
@@ -205,11 +227,11 @@ def serve():
         "--log-level", "warning",
     ])
 
-    # 9. Register @osy.tool tools in DB (as webhook tools pointing to tool server)
+    # 6. Register @osy.tool tools in DB
     time.sleep(1.5)
     _register_tools_in_db(_TOOL_REGISTRY)
 
-    # 10. Start FastAPI runtime
+    # 7. Start FastAPI runtime
     manager.start("api", [
         sys.executable, "-m", "uvicorn",
         "osymandias.runtime.main:app",
@@ -218,14 +240,14 @@ def serve():
         "--log-level", "warning",
     ])
 
-    # 10b. Start nginx now that FastAPI is up — dashboard will be immediately usable
-    if with_frontend:
+    # 8. Start nginx (Docker mode only — no-docker users manage their own proxy)
+    if with_frontend and compose_path:
         subprocess.run(
             ["docker", "compose", "-f", str(compose_path), "--profile", "frontend", "up", "-d", "nginx"],
             env=compose_env, check=True,
         )
 
-    # 11. Start Celery workers
+    # 9. Start Celery workers
     pool = "solo" if sys.platform == "win32" else "prefork"
     manager.start("workers", [
         sys.executable, "-m", "celery",
@@ -249,6 +271,8 @@ def serve():
     if with_frontend:
         lines.append(f"  Dashboard    ", style="dim")
         lines.append(f"http://localhost:{FRONTEND_PORT}", style="bold cyan")
+    elif no_docker:
+        lines.append(f"  Dashboard    serve frontend/out with your own proxy", style="dim")
     else:
         lines.append(f"  Dashboard    cd frontend && npm run dev", style="dim")
     lines.append("\n\n")
@@ -263,11 +287,17 @@ def serve():
 @app.command()
 def stop():
     """Pause the Docker infrastructure (containers stay, data preserved)."""
-    compose_path = _find_compose()
-    console.print("[dim]Stopping infrastructure...[/dim]")
-    subprocess.run(["docker", "compose", "-f", str(compose_path), "stop"], check=False)
     _kill_local_processes()
-    console.print("[green]✓[/green] Infrastructure stopped.  Data preserved.")
+    if not _docker_available():
+        console.print("[dim]No Docker — local processes stopped.[/dim]")
+        return
+    try:
+        compose_path = _find_compose()
+        console.print("[dim]Stopping infrastructure...[/dim]")
+        subprocess.run(["docker", "compose", "-f", str(compose_path), "stop"], check=False)
+        console.print("[green]✓[/green] Infrastructure stopped.  Data preserved.")
+    except SystemExit:
+        console.print("[dim]No compose file found — skipping Docker stop.[/dim]")
 
 
 # ─── osy down ────────────────────────────────────────────────────────────────
@@ -275,11 +305,17 @@ def stop():
 @app.command()
 def down():
     """Remove containers but keep volumes (data preserved)."""
-    compose_path = _find_compose()
-    console.print("[dim]Bringing down containers...[/dim]")
-    subprocess.run(["docker", "compose", "-f", str(compose_path), "down"], check=False)
     _kill_local_processes()
-    console.print("[green]✓[/green] Containers removed.  Volumes preserved.")
+    if not _docker_available():
+        console.print("[dim]No Docker — local processes stopped.[/dim]")
+        return
+    try:
+        compose_path = _find_compose()
+        console.print("[dim]Bringing down containers...[/dim]")
+        subprocess.run(["docker", "compose", "-f", str(compose_path), "down"], check=False)
+        console.print("[green]✓[/green] Containers removed.  Volumes preserved.")
+    except SystemExit:
+        console.print("[dim]No compose file found — skipping Docker down.[/dim]")
 
 
 # ─── osy delete ──────────────────────────────────────────────────────────────
@@ -319,6 +355,48 @@ def _require_docker() -> None:
     except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired):
         console.print("[red bold]✗ Docker is not running.[/red bold]")
         console.print("  Install Docker from https://docker.com and start the daemon.")
+        console.print("  Or use [cyan]osy serve --no-docker[/cyan] to connect to external services.")
+        raise typer.Exit(1)
+
+
+def _check_external_services() -> None:
+    """Verify that external Postgres, Redis, and RabbitMQ are reachable."""
+    import os
+    import socket
+    import urllib.parse
+
+    services = {
+        "postgres":  os.environ.get("OSY_POSTGRES_URL", ""),
+        "redis":     os.environ.get("OSY_REDIS_URL", ""),
+        "rabbitmq":  os.environ.get("OSY_RABBITMQ_URL", ""),
+    }
+
+    failures: list[str] = []
+    for name, url in services.items():
+        if not url:
+            console.print(f"[yellow]⚠ {name}: OSY_{name.upper()}_URL not set — skipping check[/yellow]")
+            continue
+        try:
+            # Strip scheme variants to get host:port
+            normalized = url
+            for prefix in ("postgresql+asyncpg://", "postgresql+psycopg2://",
+                           "postgresql://", "redis://", "amqp://"):
+                if normalized.startswith(prefix):
+                    normalized = "tcp://" + normalized[len(prefix):]
+                    break
+            parsed = urllib.parse.urlparse(normalized)
+            host = parsed.hostname or "localhost"
+            port = parsed.port or {"postgres": 5432, "redis": 6379, "rabbitmq": 5672}[name]
+            sock = socket.create_connection((host, port), timeout=4)
+            sock.close()
+            console.print(f"[green]✓[/green] {name}  [dim]{host}:{port}[/dim]")
+        except Exception as exc:
+            console.print(f"[red]✗ {name}[/red]  [dim]{exc}[/dim]")
+            failures.append(name)
+
+    if failures:
+        console.print(f"\n[red bold]Cannot reach: {', '.join(failures)}[/red bold]")
+        console.print("  Update OSY_* URLs in your [cyan].env[/cyan] and ensure the services are running.")
         raise typer.Exit(1)
 
 
@@ -361,6 +439,14 @@ def _kill_local_processes() -> None:
                 )
     if killed:
         console.print(f"[dim]  Stopped local processes: {killed}[/dim]")
+
+
+def _docker_available() -> bool:
+    try:
+        subprocess.run(["docker", "info"], capture_output=True, check=True, timeout=5)
+        return True
+    except Exception:
+        return False
 
 
 def _find_compose() -> Path:
@@ -482,7 +568,10 @@ LLM_DEFAULT_PROVIDER={provider}
 LLM_DEFAULT_MODEL={model}
 {key_line}
 
-# Infrastructure (managed by osy serve)
+# Infrastructure — managed by osy serve (Docker).
+# To use external/managed services instead of Docker, set OSY_NO_DOCKER=1
+# and point these URLs to your own instances.
+# OSY_NO_DOCKER=1
 OSY_POSTGRES_URL=postgresql+asyncpg://osy:osy@localhost:47762/osymandias
 OSY_REDIS_URL=redis://localhost:47763/0
 OSY_RABBITMQ_URL=amqp://guest:guest@localhost:47764/

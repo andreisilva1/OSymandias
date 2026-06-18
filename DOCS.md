@@ -77,16 +77,33 @@ Safe to re-run — existing files are skipped.
 Start the full runtime.
 
 ```
-osy serve
+osy serve [--no-docker]
 ```
 
 Starts Docker containers, runs DB migrations, discovers `@osy.tool` and `@osy.agent` callables, and launches:
+
 
 | Service | Port |
 |---|---|
 | Dashboard (nginx) | `47759` |
 | FastAPI backend | `47760` |
 | Internal tool server | `47761` |
+
+**`--no-docker` mode** — skip Docker entirely and connect to externally managed services:
+
+```bash
+# In .env — uncomment and update URLs to your own instances:
+# OSY_NO_DOCKER=1
+# OSY_POSTGRES_URL=postgresql+asyncpg://user:pass@my-db.example.com:5432/osymandias
+# OSY_REDIS_URL=redis://my-redis.example.com:6379/0
+# OSY_RABBITMQ_URL=amqp://user:pass@my-rabbit.example.com:5672/
+# OSY_QDRANT_URL=http://my-qdrant.example.com:6333
+
+osy serve --no-docker
+# or: OSY_NO_DOCKER=1 osy serve
+```
+
+`osy serve --no-docker` verifies connectivity to all configured services before starting and gives a clear error if any are unreachable. `osy stop` and `osy down` skip Docker gracefully when not available.
 
 ---
 
