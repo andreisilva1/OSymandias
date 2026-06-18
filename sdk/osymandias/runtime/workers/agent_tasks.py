@@ -44,16 +44,24 @@ def run_agent_task(self, task_id: str, agent_instance_id: str) -> None:
         )
         session.commit()
 
-        from osymandias.runtime.agents.base_agent import BaseAgent
-        agent = BaseAgent(
-            agent_definition_name=task.agent_type or "ResearchAgent",
-            job_id=task.job_id,
-            task_id=task.id,
-            session=session,
-            agent_instance_id=uuid.UUID(agent_instance_id),
+        from osymandias.runtime.models.agent_definition import AGENT_KIND_EXTERNAL
+        definition = session.get(
+            __import__("osymandias.runtime.models", fromlist=["AgentDefinition"]).AgentDefinition,
+            task.agent_type or "ResearchAgent",
         )
 
-        result = agent.run_sync()
+        if definition and definition.agent_kind == AGENT_KIND_EXTERNAL:
+            result = _run_external_agent(definition, task, session)
+        else:
+            from osymandias.runtime.agents.base_agent import BaseAgent
+            agent = BaseAgent(
+                agent_definition_name=task.agent_type or "ResearchAgent",
+                job_id=task.job_id,
+                task_id=task.id,
+                session=session,
+                agent_instance_id=uuid.UUID(agent_instance_id),
+            )
+            result = agent.run_sync()
 
         session.refresh(task)
         task.status = TaskStatus.COMPLETED
@@ -220,6 +228,50 @@ def run_planner(self, job_id: str, agent_instance_id: str) -> None:
         raise self.retry(exc=exc, countdown=10)
     finally:
         session.close()
+
+
+def _run_external_agent(definition, task, session) -> dict:
+    """Dispatch to an @osy.agent-registered callable, injecting OsyContext if declared."""
+    from osymandias.decorator import _AGENT_REGISTRY
+    from osymandias.runtime.context import OsyContext
+
+    entry = _AGENT_REGISTRY.get(definition.name)
+    if not entry:
+        raise RuntimeError(
+            f"External agent '{definition.name}' is registered in the DB but not found in "
+            f"_AGENT_REGISTRY — ensure the module containing @osy.agent('{definition.name}') "
+            f"is imported before the workers start (check agent_modules in osymandias.toml)."
+        )
+
+    ctx = OsyContext(job_id=task.job_id, task_id=task.id, session=session)
+    task_description = (task.input_context or {}).get("task_description", task.description or "")
+
+    import inspect
+    sig = inspect.signature(entry.fn)
+    if "ctx" in sig.parameters:
+        raw_result = entry.fn(task=task_description, ctx=ctx)
+    else:
+        raw_result = entry.fn(task=task_description)
+
+    result = raw_result if isinstance(raw_result, dict) else {"result": raw_result}
+
+    if definition.output_schema:
+        result = _validate_output(result, definition.output_schema, definition.name)
+
+    return result
+
+
+def _validate_output(result: dict, schema: dict, agent_name: str) -> dict:
+    """Validate result against JSON Schema. On failure, annotate but don't raise."""
+    try:
+        import jsonschema
+        jsonschema.validate(instance=result, schema=schema)
+    except ImportError:
+        pass  # jsonschema not installed — skip validation
+    except Exception as exc:
+        logger.warning("Output validation failed for {}: {}", agent_name, exc)
+        result["_validation_errors"] = str(exc)
+    return result
 
 
 def _update_job_totals(session, job_id: uuid.UUID) -> None:
