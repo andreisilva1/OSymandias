@@ -153,7 +153,19 @@ def run_planner(self, job_id: str, agent_instance_id: str) -> None:
             "input_payload": job.input_payload,
             "available_agents": _build_agent_catalogue(session),
         }
-        result = agent.run_sync(extra_context=context)
+
+        from osymandias.runtime.agents.base_agent import MaxIterationsExceeded
+        try:
+            result = agent.run_sync(extra_context=context)
+        except (MaxIterationsExceeded, Exception) as plan_exc:
+            logger.warning("PlannerAgent failed ({}), applying fallback plan", plan_exc)
+            EventEmitter.emit_sync(
+                session,
+                "PLANNER_FALLBACK",
+                {"reason": str(plan_exc)[:300]},
+                job_id=job.id,
+            )
+            result = _planner_fallback_plan(job)
 
         # Create tasks from plan
         from osymandias.runtime.models import Task, TaskDependency, TaskStatus
@@ -240,6 +252,30 @@ def run_planner(self, job_id: str, agent_instance_id: str) -> None:
         raise self.retry(exc=exc, countdown=10)
     finally:
         session.close()
+
+
+def _planner_fallback_plan(job) -> dict:
+    """Minimal Research → Write plan used when PlannerAgent exhausts all iterations."""
+    desc = job.description or job.title
+    return {
+        "tasks": [
+            {
+                "title": "Research",
+                "description": f"Research the following topic thoroughly: {desc}",
+                "agent_type": "ResearchAgent",
+                "depends_on": [],
+            },
+            {
+                "title": "Write Report",
+                "description": (
+                    f'Read job memory key "Research". '
+                    f"Write a comprehensive report about: {desc}"
+                ),
+                "agent_type": "WriterAgent",
+                "depends_on": ["Research"],
+            },
+        ]
+    }
 
 
 def _build_agent_catalogue(session) -> str:
