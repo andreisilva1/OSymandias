@@ -40,6 +40,7 @@ class JobResponse(BaseModel):
 class TaskResponse(BaseModel):
     id: UUID
     job_id: UUID
+    parent_task_id: UUID | None
     title: str
     description: str | None
     status: str

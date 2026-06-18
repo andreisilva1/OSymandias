@@ -39,6 +39,7 @@ export type TaskStatus =
 export interface Task {
   id: string;
   job_id: string;
+  parent_task_id?: string;
   title: string;
   description?: string;
   status: TaskStatus;
