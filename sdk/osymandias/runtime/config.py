@@ -37,5 +37,8 @@ class Settings(BaseSettings):
     # tool server (internal — set by osy serve)
     osy_tool_server_url: str = "http://localhost:47761"
 
+    # auth — static API key; empty string disables auth entirely
+    osy_api_key: str = ""
+
 
 settings = Settings()

@@ -653,6 +653,12 @@ OSY_TOOL_SERVER_URL=http://localhost:{TOOL_SERVER_PORT}
 # Increase for CPU-bound workloads; run `osy workers` on additional
 # machines to scale horizontally.
 # OSY_WORKER_CONCURRENCY=4
+
+# Auth (optional) — protect the API with a static key.
+# When set, all /api/v1/* requests must include:
+#   Authorization: Bearer <key>   or   X-Api-Key: <key>
+# Leave empty (or omit) to disable auth entirely.
+# OSY_API_KEY=
 """, encoding="utf-8")
 
 

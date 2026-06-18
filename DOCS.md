@@ -8,21 +8,22 @@
 
 1. [Installation](#installation)
 2. [CLI reference](#cli-reference)
-3. [@osy.tool — built-in tools](#osytool)
-4. [@osy.agent — external agents](#osyagent)
-5. [osymandias.toml](#osymandiastoml)
-6. [OsyContext](#osycontext)
-7. [Adapters](#adapters)
+3. [Authentication](#authentication)
+4. [@osy.tool — built-in tools](#osytool)
+5. [@osy.agent — external agents](#osyagent)
+6. [osymandias.toml](#osymandiastoml)
+7. [OsyContext](#osycontext)
+8. [Adapters](#adapters)
    - [LangChain](#langchain)
    - [CrewAI](#crewai)
    - [LlamaIndex](#llamaindex)
    - [Smolagents](#smolagents)
    - [OpenAI Agents SDK](#openai-agents-sdk)
-8. [Submitting jobs via API](#submitting-jobs-via-api)
-9. [Dashboard pages](#dashboard-pages)
-10. [Supported LLM providers](#supported-llm-providers)
-11. [Scaling](#scaling)
-12. [Optional dependencies](#optional-dependencies)
+9. [Submitting jobs via API](#submitting-jobs-via-api)
+10. [Dashboard pages](#dashboard-pages)
+11. [Supported LLM providers](#supported-llm-providers)
+12. [Scaling](#scaling)
+13. [Optional dependencies](#optional-dependencies)
 
 ---
 
@@ -157,6 +158,41 @@ osy delete
 ```
 
 > **Warning:** This permanently deletes all jobs, memory, and agent data.
+
+---
+
+## Authentication
+
+OSymandias includes an optional static API key gate. Auth is **disabled by default** — no configuration needed for local development.
+
+### Enabling auth
+
+Set `OSY_API_KEY` in `.env` (or as an environment variable):
+
+```bash
+# .env
+OSY_API_KEY=my-secret-key
+```
+
+Restart `osy serve`. All `/api/v1/*` endpoints now require the key. `/health`, `/docs`, and `/openapi.json` are always exempt.
+
+### Sending the key
+
+Either header works:
+
+```bash
+# Authorization header (Bearer scheme)
+curl -H "Authorization: Bearer my-secret-key" http://localhost:47760/api/v1/jobs
+
+# X-Api-Key header
+curl -H "X-Api-Key: my-secret-key" http://localhost:47760/api/v1/jobs
+```
+
+Requests without a valid key receive `401 Unauthorized`.
+
+### Disabling auth
+
+Remove `OSY_API_KEY` from `.env` (or set it to an empty string) and restart.
 
 ---
 
