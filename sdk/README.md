@@ -7,7 +7,7 @@
 [![License](https://img.shields.io/badge/license-MIT-green?style=flat-square)](https://github.com/andreisilva1/OSymandias/blob/main/LICENSE)
 [![Status](https://img.shields.io/badge/status-in%20development-orange?style=flat-square)](https://github.com/andreisilva1/OSymandias)
 
-**[Full documentation → GitHub](https://github.com/andreisilva1/OSymandias/blob/main/DOCS.md)**
+**[Full documentation → GitHub](https://github.com/andreisilva1/OSymandias/blob/main/DOCS_en.md)**
 
 ---
 
@@ -139,7 +139,7 @@ Jobs are decomposed by a built-in PlannerAgent that sees all registered agents a
 
 ---
 
-**[Full documentation → GitHub](https://github.com/andreisilva1/OSymandias/blob/main/DOCS.md)**
+**[Full documentation → GitHub](https://github.com/andreisilva1/OSymandias/blob/main/DOCS_en.md)**
 
 ---
 
