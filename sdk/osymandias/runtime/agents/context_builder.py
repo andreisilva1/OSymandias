@@ -93,14 +93,29 @@ class ContextBuilder:
             .replace("{{available_tools}}", self._build_tools_block())
         )
 
+    def _get_tool_definitions(self) -> "dict[str, Any]":
+        if not hasattr(self, "_tool_defs_cache"):
+            from osymandias.runtime.models import ToolDefinition
+            if not self.definition.allowed_tools:
+                self._tool_defs_cache: dict = {}
+            else:
+                rows = self.session.scalars(
+                    select(ToolDefinition).where(
+                        ToolDefinition.name.in_(self.definition.allowed_tools),
+                        ToolDefinition.is_active == True,  # noqa: E712
+                    )
+                ).all()
+                self._tool_defs_cache = {td.name: td for td in rows}
+        return self._tool_defs_cache
+
     def _build_tools_block(self) -> str:
-        if not self.definition.allowed_tools:
+        tool_defs = self._get_tool_definitions()
+        if not tool_defs:
             return "(none)"
-        from osymandias.runtime.models import ToolDefinition
         lines = []
         for tool_name in self.definition.allowed_tools:
-            td = self.session.get(ToolDefinition, tool_name)
-            if not td or not td.is_active:
+            td = tool_defs.get(tool_name)
+            if not td:
                 continue
             props = (td.input_schema or {}).get("properties", {})
             required = set((td.input_schema or {}).get("required", []))
@@ -145,11 +160,11 @@ class ContextBuilder:
         return [{"key": r["key"], "value": r["value"]} for r in results]
 
     def _load_tool_schemas(self) -> list[dict[str, Any]]:
+        tool_defs = self._get_tool_definitions()
         schemas = []
         for tool_name in self.definition.allowed_tools:
-            from osymandias.runtime.models import ToolDefinition
-            td = self.session.get(ToolDefinition, tool_name)
-            if td and td.is_active:
+            td = tool_defs.get(tool_name)
+            if td:
                 schemas.append({
                     "type": "function",
                     "function": {
