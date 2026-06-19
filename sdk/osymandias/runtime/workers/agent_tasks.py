@@ -113,11 +113,15 @@ def run_agent_task(self, task_id: str, agent_instance_id: str) -> None:
         session.commit()  # persist token/cost aggregation
 
         if task.output_schema:
-            from osymandias.runtime.workers.evaluator_tasks import evaluate_output
-            evaluate_output.apply_async(args=[task_id], queue="evaluator", countdown=1)
+            celery_app.send_task(
+                "osymandias.runtime.workers.evaluator_tasks.evaluate_output",
+                args=[task_id], queue="evaluator", countdown=1,
+            )
         else:
-            from osymandias.runtime.workers.scheduler_tasks import resolve_dag
-            resolve_dag.apply_async(args=[str(task.job_id)], queue="scheduler")
+            celery_app.send_task(
+                "osymandias.runtime.workers.scheduler_tasks.resolve_dag",
+                args=[str(task.job_id)], queue="scheduler",
+            )
 
     except Exception as exc:
         session.rollback()
@@ -257,9 +261,10 @@ def run_planner(self, job_id: str, agent_instance_id: str) -> None:
         job.status = JobStatus.RUNNING
         session.commit()
 
-        # Start DAG resolution
-        from osymandias.runtime.workers.scheduler_tasks import resolve_dag
-        resolve_dag.apply_async(args=[job_id], queue="scheduler")
+        celery_app.send_task(
+            "osymandias.runtime.workers.scheduler_tasks.resolve_dag",
+            args=[job_id], queue="scheduler",
+        )
 
     except Exception as exc:
         session.rollback()
@@ -416,8 +421,10 @@ def _handle_task_failure(task_id: str, agent_instance_id: str, error: str, sessi
         )
         session.commit()
 
-        from osymandias.runtime.workers.scheduler_tasks import resolve_dag
-        resolve_dag.apply_async(args=[str(task.job_id)], queue="scheduler")
+        celery_app.send_task(
+            "osymandias.runtime.workers.scheduler_tasks.resolve_dag",
+            args=[str(task.job_id)], queue="scheduler",
+        )
     except Exception:
         session.rollback()
         logger.exception("_handle_task_failure could not mark task {} as failed", task_id)

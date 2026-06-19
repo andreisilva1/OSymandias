@@ -70,9 +70,11 @@ def dispatch_job(self, job_id: str) -> None:
         )
         session.commit()
 
-        # Dispatch the planning task to the agents queue
-        from osymandias.runtime.workers.agent_tasks import run_planner  # avoid circular import
-        run_planner.apply_async(args=[str(job.id), str(instance.id)], queue="agents")
+        celery_app.send_task(
+            "osymandias.runtime.workers.agent_tasks.run_planner",
+            args=[str(job.id), str(instance.id)],
+            queue="agents",
+        )
 
     except Exception as exc:
         session.rollback()
@@ -253,8 +255,11 @@ def dispatch_task(self, task_id: str) -> None:
         )
         session.commit()
 
-        from osymandias.runtime.workers.agent_tasks import run_agent_task  # avoid circular import
-        run_agent_task.apply_async(args=[task_id, str(instance.id)], queue="agents")
+        celery_app.send_task(
+            "osymandias.runtime.workers.agent_tasks.run_agent_task",
+            args=[task_id, str(instance.id)],
+            queue="agents",
+        )
 
     except Exception as exc:
         session.rollback()
