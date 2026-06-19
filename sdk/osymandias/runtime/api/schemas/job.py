@@ -58,3 +58,54 @@ class TaskResponse(BaseModel):
     completed_at: datetime | None
 
     model_config = {"from_attributes": True}
+
+
+class MessageResponse(BaseModel):
+    id: UUID
+    job_id: UUID
+    sender_agent_instance_id: UUID
+    receiver_agent_instance_id: UUID | None
+    receiver_agent_type: str | None
+    message_type: str
+    subject: str | None
+    content: str | None
+    is_read: bool
+    sent_at: datetime
+    read_at: datetime | None
+
+    model_config = {"from_attributes": True}
+
+
+class ToolCallResponse(BaseModel):
+    id: UUID
+    task_id: UUID
+    agent_instance_id: UUID
+    job_id: UUID
+    tool_name: str
+    input_args: dict[str, Any] | None
+    output_result: dict[str, Any] | None
+    status: str
+    attempt_count: int
+    error_message: str | None
+    created_at: datetime
+    completed_at: datetime | None
+    duration_ms: int | None
+    estimated_cost: float
+
+    model_config = {"from_attributes": True}
+
+
+class AgentInstanceResponse(BaseModel):
+    id: UUID
+    job_id: UUID
+    task_id: UUID | None
+    agent_definition_name: str
+    status: str
+    iteration_count: int
+    tokens_used: int
+    tool_calls_count: int
+    last_heartbeat_at: datetime | None
+    created_at: datetime
+    terminated_at: datetime | None
+
+    model_config = {"from_attributes": True}

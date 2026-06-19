@@ -10,7 +10,14 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from osymandias.runtime.api.deps import get_db, get_or_404
-from osymandias.runtime.api.schemas.job import JobCreate, JobResponse, TaskResponse
+from osymandias.runtime.api.schemas.job import (
+    AgentInstanceResponse,
+    JobCreate,
+    JobResponse,
+    MessageResponse,
+    TaskResponse,
+    ToolCallResponse,
+)
 from osymandias.runtime.config import settings
 from osymandias.runtime.core.event_emitter import EventEmitter
 from osymandias.runtime.models import Job, JobPriority, JobStatus, Task
@@ -131,81 +138,31 @@ async def get_job_tasks(job_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
     return []
 
 
-@router.get("/{job_id}/messages")
+@router.get("/{job_id}/messages", response_model=list[MessageResponse])
 async def get_job_messages(job_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
     from osymandias.runtime.models import Message
     result = await db.execute(
         select(Message).where(Message.job_id == job_id).order_by(Message.sent_at)
     )
-    msgs = result.scalars().all()
-    return [
-        {
-            "id": str(m.id),
-            "job_id": str(m.job_id),
-            "sender_agent_instance_id": str(m.sender_agent_instance_id),
-            "receiver_agent_instance_id": str(m.receiver_agent_instance_id) if m.receiver_agent_instance_id else None,
-            "receiver_agent_type": m.receiver_agent_type,
-            "message_type": m.message_type,
-            "subject": m.subject,
-            "content": m.content,
-            "is_read": m.is_read,
-            "sent_at": m.sent_at.isoformat(),
-            "read_at": m.read_at.isoformat() if m.read_at else None,
-        }
-        for m in msgs
-    ]
+    return result.scalars().all()
 
 
-@router.get("/{job_id}/tool-calls")
+@router.get("/{job_id}/tool-calls", response_model=list[ToolCallResponse])
 async def get_job_tool_calls(job_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
     from osymandias.runtime.models import ToolCall
     result = await db.execute(
         select(ToolCall).where(ToolCall.job_id == job_id).order_by(ToolCall.created_at)
     )
-    tcs = result.scalars().all()
-    return [
-        {
-            "id": str(tc.id),
-            "task_id": str(tc.task_id),
-            "agent_instance_id": str(tc.agent_instance_id),
-            "tool_name": tc.tool_name,
-            "input_args": tc.input_args,
-            "output_result": tc.output_result,
-            "status": tc.status,
-            "attempt_count": tc.attempt_count,
-            "error_message": tc.error_message,
-            "created_at": tc.created_at.isoformat(),
-            "completed_at": tc.completed_at.isoformat() if tc.completed_at else None,
-            "duration_ms": tc.duration_ms,
-            "estimated_cost": float(tc.estimated_cost) if tc.estimated_cost else 0.0,
-        }
-        for tc in tcs
-    ]
+    return result.scalars().all()
 
 
-@router.get("/{job_id}/agents")
+@router.get("/{job_id}/agents", response_model=list[AgentInstanceResponse])
 async def get_job_agent_instances(job_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
     from osymandias.runtime.models import AgentInstance
     result = await db.execute(
         select(AgentInstance).where(AgentInstance.job_id == job_id).order_by(AgentInstance.created_at)
     )
-    instances = result.scalars().all()
-    return [
-        {
-            "id": str(i.id),
-            "job_id": str(i.job_id),
-            "task_id": str(i.task_id) if i.task_id else None,
-            "agent_definition_name": i.agent_definition_name,
-            "status": i.status,
-            "iteration_count": i.iteration_count,
-            "tokens_used": i.tokens_used,
-            "tool_calls_count": i.tool_calls_count,
-            "last_heartbeat_at": i.last_heartbeat_at.isoformat() if i.last_heartbeat_at else None,
-            "created_at": i.created_at.isoformat(),
-            "terminated_at": i.terminated_at.isoformat() if i.terminated_at else None,
-        }
-        for i in instances
-    ]
+    return result.scalars().all()
 
 
 @router.get("/{job_id}/output")
