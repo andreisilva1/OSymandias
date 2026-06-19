@@ -1,14 +1,31 @@
 """
 Agent tasks — run agent loops inside Celery workers.
 """
+import inspect
 import uuid
 from datetime import datetime, timezone
 
 from loguru import logger
+from sqlalchemy import func, select
 
+from osymandias.decorator import _AGENT_REGISTRY
+from osymandias.runtime.agents.base_agent import BaseAgent, MaxIterationsExceeded
+from osymandias.runtime.context import OsyContext
 from osymandias.runtime.core.event_emitter import EventEmitter
 from osymandias.runtime.db.sync_session import get_sync_session
-from osymandias.runtime.models import Job, JobStatus, Task, TaskStatus
+from osymandias.runtime.memory.manager import MemoryManager
+from osymandias.runtime.models import (
+    AgentDefinition,
+    AgentInstance,
+    Job,
+    JobStatus,
+    Task,
+    TaskDependency,
+    TaskStatus,
+    ToolCall,
+)
+from osymandias.runtime.models.agent_definition import AGENT_KIND_EXTERNAL
+from osymandias.runtime.models.memory_entry import MemoryScope
 from osymandias.runtime.workers.celery_app import celery_app
 
 
@@ -44,16 +61,11 @@ def run_agent_task(self, task_id: str, agent_instance_id: str) -> None:
         )
         session.commit()
 
-        from osymandias.runtime.models.agent_definition import AGENT_KIND_EXTERNAL
-        definition = session.get(
-            __import__("osymandias.runtime.models", fromlist=["AgentDefinition"]).AgentDefinition,
-            task.agent_type or "ResearchAgent",
-        )
+        definition = session.get(AgentDefinition, task.agent_type or "ResearchAgent")
 
         if definition and definition.agent_kind == AGENT_KIND_EXTERNAL:
             result = _run_external_agent(definition, task, session)
         else:
-            from osymandias.runtime.agents.base_agent import BaseAgent
             agent = BaseAgent(
                 agent_definition_name=task.agent_type or "ResearchAgent",
                 job_id=task.job_id,
@@ -74,8 +86,6 @@ def run_agent_task(self, task_id: str, agent_instance_id: str) -> None:
         # Stored under task.title (e.g. "Research") and task.agent_type (e.g. "ResearchAgent").
         # embed=True enables semantic search via search_memory.
         try:
-            from osymandias.runtime.memory.manager import MemoryManager
-            from osymandias.runtime.models.memory_entry import MemoryScope
             for key in {task.title, task.agent_type}:
                 if key:
                     MemoryManager.write_sync(
@@ -139,7 +149,6 @@ def run_planner(self, job_id: str, agent_instance_id: str) -> None:
         if not job:
             return
 
-        from osymandias.runtime.agents.base_agent import BaseAgent
         agent = BaseAgent(
             agent_definition_name="PlannerAgent",
             job_id=job.id,
@@ -154,7 +163,6 @@ def run_planner(self, job_id: str, agent_instance_id: str) -> None:
             "available_agents": _build_agent_catalogue(session),
         }
 
-        from osymandias.runtime.agents.base_agent import MaxIterationsExceeded
         try:
             result = agent.run_sync(extra_context=context)
         except (MaxIterationsExceeded, Exception) as plan_exc:
@@ -168,7 +176,6 @@ def run_planner(self, job_id: str, agent_instance_id: str) -> None:
             result = _planner_fallback_plan(job)
 
         # Create tasks from plan
-        from osymandias.runtime.models import Task, TaskDependency, TaskStatus
         task_map: dict[str, Task] = {}
 
         # Normalize LLM-returned agent type names to registered agent_definition names.
@@ -192,9 +199,7 @@ def run_planner(self, job_id: str, agent_instance_id: str) -> None:
         }
         # Extend map with every registered agent (handles external agents)
         try:
-            from sqlalchemy import select as _select
-            from osymandias.runtime.models import AgentDefinition as _AD
-            for _ad in session.scalars(_select(_AD).where(_AD.is_active == True)).all():  # noqa: E712
+            for _ad in session.scalars(select(AgentDefinition).where(AgentDefinition.is_active == True)).all():  # noqa: E712
                 _AGENT_TYPE_MAP[_ad.name.lower()] = _ad.name
         except Exception:
             pass
@@ -280,10 +285,6 @@ def _planner_fallback_plan(job) -> dict:
 
 def _build_agent_catalogue(session) -> str:
     """Return a formatted list of all active agent types for the PlannerAgent prompt."""
-    from sqlalchemy import select
-    from osymandias.runtime.models import AgentDefinition
-    from osymandias.runtime.models.agent_definition import AGENT_KIND_EXTERNAL
-
     _EXCLUDE = {"PlannerAgent", "EvaluatorAgent"}
     try:
         defs = session.scalars(
@@ -327,9 +328,6 @@ def _resolve_callable_ref(callable_ref: str) -> None:
 
 def _run_external_agent(definition, task, session) -> dict:
     """Dispatch to an @osy.agent-registered callable, injecting OsyContext if declared."""
-    from osymandias.decorator import _AGENT_REGISTRY
-    from osymandias.runtime.context import OsyContext
-
     entry = _AGENT_REGISTRY.get(definition.name)
     if not entry and definition.callable_ref:
         _resolve_callable_ref(definition.callable_ref)
@@ -345,7 +343,6 @@ def _run_external_agent(definition, task, session) -> dict:
     ctx = OsyContext(job_id=task.job_id, task_id=task.id, session=session)
     task_description = (task.input_context or {}).get("task_description", task.description or "")
 
-    import inspect
     sig = inspect.signature(entry.fn)
     if "ctx" in sig.parameters:
         raw_result = entry.fn(task=task_description, ctx=ctx)
@@ -374,8 +371,6 @@ def _validate_output(result: dict, schema: dict, agent_name: str) -> dict:
 
 
 def _update_job_totals(session, job_id: uuid.UUID) -> None:
-    from sqlalchemy import select, func
-    from osymandias.runtime.models import AgentInstance, ToolCall
     tokens = session.scalar(
         select(func.coalesce(func.sum(AgentInstance.tokens_used), 0))
         .where(AgentInstance.job_id == job_id)
