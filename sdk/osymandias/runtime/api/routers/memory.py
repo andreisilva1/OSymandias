@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from osymandias.runtime.api.deps import get_db
+from osymandias.runtime.api.deps import get_db, get_or_404
 from osymandias.runtime.models.memory_entry import MemoryEntry
 
 router = APIRouter(prefix="/api/v1/memory", tags=["memory"])
@@ -37,8 +37,6 @@ async def list_memory(
 
 @router.delete("/{entry_id}", status_code=204)
 async def delete_memory_entry(entry_id: str, db: AsyncSession = Depends(get_db)):
-    entry = await db.get(MemoryEntry, entry_id)
-    if not entry:
-        raise HTTPException(status_code=404, detail="Memory entry not found")
+    entry = await get_or_404(db, MemoryEntry, entry_id, "Memory entry")
     await db.delete(entry)
     await db.commit()

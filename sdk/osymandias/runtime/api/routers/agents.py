@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from osymandias.runtime.api.deps import get_db
+from osymandias.runtime.api.deps import get_db, get_or_404
 from osymandias.runtime.api.schemas.agent import (
     AgentDefinitionCreate,
     AgentDefinitionResponse,
@@ -37,17 +37,12 @@ async def create_agent(body: AgentDefinitionCreate, db: AsyncSession = Depends(g
 
 @router.get("/{name}", response_model=AgentDefinitionResponse)
 async def get_agent(name: str, db: AsyncSession = Depends(get_db)):
-    agent = await db.get(AgentDefinition, name)
-    if not agent:
-        raise HTTPException(status_code=404, detail="Agent not found")
-    return agent
+    return await get_or_404(db, AgentDefinition, name, "Agent")
 
 
 @router.put("/{name}", response_model=AgentDefinitionResponse)
 async def update_agent(name: str, body: AgentDefinitionUpdate, db: AsyncSession = Depends(get_db)):
-    agent = await db.get(AgentDefinition, name)
-    if not agent:
-        raise HTTPException(status_code=404, detail="Agent not found")
+    agent = await get_or_404(db, AgentDefinition, name, "Agent")
     for field, value in body.model_dump(exclude_none=True).items():
         setattr(agent, field, value)
     agent.updated_at = datetime.now(timezone.utc)
@@ -61,36 +56,28 @@ async def update_agent(name: str, body: AgentDefinitionUpdate, db: AsyncSession 
 
 @router.patch("/{name}/deactivate", status_code=status.HTTP_204_NO_CONTENT)
 async def deactivate_agent(name: str, db: AsyncSession = Depends(get_db)):
-    agent = await db.get(AgentDefinition, name)
-    if not agent:
-        raise HTTPException(status_code=404, detail="Agent not found")
+    agent = await get_or_404(db, AgentDefinition, name, "Agent")
     agent.is_active = False
     await db.commit()
 
 
 @router.patch("/{name}/reactivate", status_code=status.HTTP_204_NO_CONTENT)
 async def reactivate_agent(name: str, db: AsyncSession = Depends(get_db)):
-    agent = await db.get(AgentDefinition, name)
-    if not agent:
-        raise HTTPException(status_code=404, detail="Agent not found")
+    agent = await get_or_404(db, AgentDefinition, name, "Agent")
     agent.is_active = True
     await db.commit()
 
 
 @router.delete("/{name}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_agent(name: str, db: AsyncSession = Depends(get_db)):
-    agent = await db.get(AgentDefinition, name)
-    if not agent:
-        raise HTTPException(status_code=404, detail="Agent not found")
+    agent = await get_or_404(db, AgentDefinition, name, "Agent")
     await db.delete(agent)
     await db.commit()
 
 
 @router.post("/{name}/clone", response_model=AgentDefinitionResponse, status_code=status.HTTP_201_CREATED)
 async def clone_agent(name: str, db: AsyncSession = Depends(get_db)):
-    source = await db.get(AgentDefinition, name)
-    if not source:
-        raise HTTPException(status_code=404, detail="Agent not found")
+    source = await get_or_404(db, AgentDefinition, name, "Agent")
 
     base = f"{name} (copy)"
     new_name = base

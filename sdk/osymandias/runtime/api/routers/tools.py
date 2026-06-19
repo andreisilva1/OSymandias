@@ -6,7 +6,7 @@ from pydantic import BaseModel, field_validator
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from osymandias.runtime.api.deps import get_db
+from osymandias.runtime.api.deps import get_db, get_or_404
 from osymandias.runtime.models import ToolDefinition
 
 _PRIVATE_PREFIXES = (
@@ -82,10 +82,7 @@ async def list_tools(db: AsyncSession = Depends(get_db)):
 
 @router.get("/{name}")
 async def get_tool(name: str, db: AsyncSession = Depends(get_db)):
-    tool = await db.get(ToolDefinition, name)
-    if not tool:
-        raise HTTPException(status_code=404, detail="Tool not found")
-    return _serialize(tool)
+    return _serialize(await get_or_404(db, ToolDefinition, name, "Tool"))
 
 
 @router.post("", status_code=status.HTTP_201_CREATED)
@@ -102,9 +99,7 @@ async def create_tool(body: ToolCreate, db: AsyncSession = Depends(get_db)):
 
 @router.put("/{name}")
 async def update_tool(name: str, body: ToolUpdate, db: AsyncSession = Depends(get_db)):
-    tool = await db.get(ToolDefinition, name)
-    if not tool:
-        raise HTTPException(status_code=404, detail="Tool not found")
+    tool = await get_or_404(db, ToolDefinition, name, "Tool")
     for field, value in body.model_dump(exclude_none=True).items():
         setattr(tool, field, value)
     await db.commit()
@@ -114,8 +109,6 @@ async def update_tool(name: str, body: ToolUpdate, db: AsyncSession = Depends(ge
 
 @router.delete("/{name}", status_code=status.HTTP_204_NO_CONTENT)
 async def deactivate_tool(name: str, db: AsyncSession = Depends(get_db)):
-    tool = await db.get(ToolDefinition, name)
-    if not tool:
-        raise HTTPException(status_code=404, detail="Tool not found")
+    tool = await get_or_404(db, ToolDefinition, name, "Tool")
     tool.is_active = False
     await db.commit()

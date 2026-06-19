@@ -9,7 +9,7 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from osymandias.runtime.api.deps import get_db
+from osymandias.runtime.api.deps import get_db, get_or_404
 from osymandias.runtime.api.schemas.job import JobCreate, JobResponse, TaskResponse
 from osymandias.runtime.config import settings
 from osymandias.runtime.core.event_emitter import EventEmitter
@@ -61,17 +61,12 @@ async def list_jobs(
 
 @router.get("/{job_id}", response_model=JobResponse)
 async def get_job(job_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
-    job = await db.get(Job, job_id)
-    if not job:
-        raise HTTPException(status_code=404, detail="Job not found")
-    return job
+    return await get_or_404(db, Job, job_id, "Job")
 
 
 @router.post("/{job_id}/resubmit", response_model=JobResponse, status_code=status.HTTP_201_CREATED)
 async def resubmit_job(job_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
-    original = await db.get(Job, job_id)
-    if not original:
-        raise HTTPException(status_code=404, detail="Job not found")
+    original = await get_or_404(db, Job, job_id, "Job")
 
     job = Job(
         title=original.title,
@@ -95,9 +90,7 @@ async def resubmit_job(job_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
 
 @router.patch("/{job_id}/cancel", response_model=JobResponse)
 async def cancel_job(job_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
-    job = await db.get(Job, job_id)
-    if not job:
-        raise HTTPException(status_code=404, detail="Job not found")
+    job = await get_or_404(db, Job, job_id, "Job")
     if job.status in (JobStatus.COMPLETED, JobStatus.FAILED, JobStatus.CANCELLED):
         raise HTTPException(status_code=400, detail=f"Cannot cancel job with status {job.status}")
 
@@ -217,9 +210,7 @@ async def get_job_agent_instances(job_id: uuid.UUID, db: AsyncSession = Depends(
 
 @router.get("/{job_id}/output")
 async def get_job_output(job_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
-    job = await db.get(Job, job_id)
-    if not job:
-        raise HTTPException(status_code=404, detail="Job not found")
+    job = await get_or_404(db, Job, job_id, "Job")
     return {"output": job.output_payload}
 
 
