@@ -304,6 +304,7 @@ class OsyContext:
         finally:
             pubsub.unsubscribe()
             pubsub.close()
+            r.close()
 
         # ── Fallback DB check ────────────────────────────────────────────────
         # Catches tasks that completed between the initial snapshot and the
