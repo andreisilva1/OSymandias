@@ -128,7 +128,7 @@ def run_agent_task(self, task_id: str, agent_instance_id: str) -> None:
             except Exception:
                 session.rollback()
                 logger.warning("run_agent_task: could not aggregate job totals for job {}", job_id)
-        _handle_task_failure(task_id, agent_instance_id, str(exc))
+        _handle_task_failure(task_id, agent_instance_id, str(exc), session=session)
         logger.exception("run_agent_task failed for task {}: {}", task_id, exc)
     finally:
         session.close()
@@ -171,6 +171,16 @@ def run_planner(self, job_id: str, agent_instance_id: str) -> None:
                 session,
                 "PLANNER_FALLBACK",
                 {"reason": str(plan_exc)[:300]},
+                job_id=job.id,
+            )
+            result = _planner_fallback_plan(job)
+
+        if not result.get("tasks"):
+            logger.warning("PlannerAgent returned empty task list, applying fallback plan")
+            EventEmitter.emit_sync(
+                session,
+                "PLANNER_FALLBACK",
+                {"reason": "empty task list"},
                 job_id=job.id,
             )
             result = _planner_fallback_plan(job)
@@ -386,8 +396,10 @@ def _update_job_totals(session, job_id: uuid.UUID) -> None:
         session.flush()
 
 
-def _handle_task_failure(task_id: str, agent_instance_id: str, error: str) -> None:
-    session = get_sync_session()
+def _handle_task_failure(task_id: str, agent_instance_id: str, error: str, session=None) -> None:
+    _own_session = session is None
+    if _own_session:
+        session = get_sync_session()
     try:
         task = session.get(Task, uuid.UUID(task_id))
         if not task:
@@ -410,4 +422,5 @@ def _handle_task_failure(task_id: str, agent_instance_id: str, error: str) -> No
         session.rollback()
         logger.exception("_handle_task_failure could not mark task {} as failed", task_id)
     finally:
-        session.close()
+        if _own_session:
+            session.close()

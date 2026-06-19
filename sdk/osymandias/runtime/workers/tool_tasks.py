@@ -79,24 +79,24 @@ def execute_tool_call(self, tool_call_id: str) -> dict:
 
     except Exception as exc:
         session.rollback()
-        session2 = get_sync_session()
         try:
-            tc2 = session2.get(ToolCall, uuid.UUID(tool_call_id))
-            if tc2:
-                tc2.status = ToolCallStatus.FAILED
-                tc2.error_message = str(exc)
-                tc2.completed_at = datetime.now(timezone.utc)
+            tc = session.get(ToolCall, uuid.UUID(tool_call_id))
+            if tc:
+                tc.status = ToolCallStatus.FAILED
+                tc.error_message = str(exc)
+                tc.completed_at = datetime.now(timezone.utc)
                 EventEmitter.emit_sync(
-                    session2,
+                    session,
                     "TOOL_CALL_FAILED",
-                    {"tool_name": tc2.tool_name, "error": str(exc)},
-                    job_id=tc2.job_id,
-                    task_id=tc2.task_id,
-                    agent_instance_id=tc2.agent_instance_id,
+                    {"tool_name": tc.tool_name, "error": str(exc)},
+                    job_id=tc.job_id,
+                    task_id=tc.task_id,
+                    agent_instance_id=tc.agent_instance_id,
                 )
-                session2.commit()
-        finally:
-            session2.close()
+                session.commit()
+        except Exception:
+            session.rollback()
+            logger.warning("execute_tool_call: could not mark {} as failed", tool_call_id)
 
         logger.exception("execute_tool_call failed for {}: {}", tool_call_id, exc)
         raise self.retry(exc=exc, countdown=3)
