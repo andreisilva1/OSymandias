@@ -34,6 +34,12 @@ class Settings(BaseSettings):
     heartbeat_timeout_seconds: int = 60
     metrics_cache_ttl_seconds: int = 300
 
+    # LLM response cache — when enabled, identical (model + messages + tools)
+    # calls return a cached response instead of hitting the provider. Off by
+    # default; opt in with LLM_CACHE_ENABLED=true to cut cost on retries/replays.
+    llm_cache_enabled: bool = False
+    llm_cache_ttl_seconds: int = 86400
+
     # tool server (internal — set by osy serve)
     osy_tool_server_url: str = "http://localhost:47761"
 

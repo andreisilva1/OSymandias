@@ -4,9 +4,12 @@ Handles provider routing, retry, and cost tracking.
 """
 from __future__ import annotations
 
+import hashlib
+import json
 from typing import Any
 
 import litellm
+import redis as _redis
 from loguru import logger
 from tenacity import retry, stop_after_attempt, wait_exponential
 
@@ -14,6 +17,30 @@ from osymandias.runtime.config import settings
 from osymandias.runtime.llm.cost_tracker import estimate_cost
 
 litellm.set_verbose = False
+
+# Lazy, module-level Redis client for the optional response cache.
+_cache_client: _redis.Redis | None = None
+
+
+def _get_cache_redis() -> _redis.Redis:
+    global _cache_client
+    if _cache_client is None:
+        _cache_client = _redis.from_url(settings.osy_redis_url, decode_responses=True)
+    return _cache_client
+
+
+def _cache_key(
+    model_str: str,
+    messages: list[dict[str, Any]],
+    tools: list[dict[str, Any]] | None,
+    temperature: float,
+) -> str:
+    raw = json.dumps(
+        {"model": model_str, "messages": messages, "tools": tools, "temperature": temperature},
+        sort_keys=True,
+        default=str,
+    )
+    return "llm:cache:" + hashlib.sha256(raw.encode()).hexdigest()
 
 
 def _build_model_string(provider: str, model: str) -> str:
@@ -80,6 +107,17 @@ def chat_completion(
         call_kwargs["tools"] = tools
         call_kwargs["tool_choice"] = "auto"
 
+    cache_key = None
+    if settings.llm_cache_enabled:
+        cache_key = _cache_key(model_str, messages, tools, temperature)
+        try:
+            hit = _get_cache_redis().get(cache_key)
+            if hit:
+                logger.debug("LLM cache hit: model={}", model_str)
+                return json.loads(hit)
+        except Exception as exc:
+            logger.warning("LLM cache read failed ({}), calling provider", exc)
+
     logger.debug("LLM call: model={} messages={}", model_str, len(messages))
     response = litellm.completion(**call_kwargs)
 
@@ -101,7 +139,7 @@ def chat_completion(
             for tc in message.tool_calls
         ]
 
-    return {
+    result = {
         "content": message.content,
         "tool_calls": tool_calls,
         "input_tokens": input_tokens,
@@ -109,3 +147,11 @@ def chat_completion(
         "cost_estimate": cost,
         "model": model_str,
     }
+
+    if cache_key is not None:
+        try:
+            _get_cache_redis().setex(cache_key, settings.llm_cache_ttl_seconds, json.dumps(result))
+        except Exception as exc:
+            logger.warning("LLM cache write failed ({}), continuing", exc)
+
+    return result
