@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 import redis.asyncio as aioredis
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from osymandias.runtime.api.deps import get_db, get_or_404
@@ -190,6 +190,87 @@ async def get_job_agent_instances(job_id: uuid.UUID, db: AsyncSession = Depends(
 async def get_job_output(job_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
     job = await get_or_404(db, Job, job_id, "Job")
     return {"output": job.output_payload}
+
+
+@router.get("/{job_id}/cost-breakdown")
+async def get_job_cost_breakdown(job_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
+    """Per-agent and per-tool token/cost breakdown for a job."""
+    from osymandias.runtime.models import AgentInstance, ToolCall
+
+    agent_rows = (await db.execute(
+        select(
+            AgentInstance.agent_definition_name,
+            func.coalesce(func.sum(AgentInstance.tokens_used), 0),
+            func.coalesce(func.sum(AgentInstance.estimated_cost), 0),
+            func.count(AgentInstance.id),
+        )
+        .where(AgentInstance.job_id == job_id)
+        .group_by(AgentInstance.agent_definition_name)
+    )).all()
+
+    tool_rows = (await db.execute(
+        select(
+            ToolCall.tool_name,
+            func.count(ToolCall.id),
+            func.coalesce(func.sum(ToolCall.estimated_cost), 0),
+        )
+        .where(ToolCall.job_id == job_id)
+        .group_by(ToolCall.tool_name)
+    )).all()
+
+    by_agent = [
+        {"agent": name, "tokens": int(tok), "cost": float(cost), "instances": int(n)}
+        for name, tok, cost, n in agent_rows
+    ]
+    by_tool = [
+        {"tool": name, "calls": int(n), "cost": float(cost)}
+        for name, n, cost in tool_rows
+    ]
+    return {
+        "by_agent": by_agent,
+        "by_tool": by_tool,
+        "total_tokens": sum(a["tokens"] for a in by_agent),
+        "total_cost": round(sum(a["cost"] for a in by_agent) + sum(t["cost"] for t in by_tool), 6),
+    }
+
+
+@router.get("/{job_id}/tasks/{task_id}/trace")
+async def get_task_trace(job_id: uuid.UUID, task_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
+    """Full execution trace for a task: events, tool calls, and the recorded
+    conversation history — the reasoning chain behind the result."""
+    from osymandias.runtime.models import Event, ToolCall, MemoryEntry, MemoryScope
+
+    task = await get_or_404(db, Task, task_id, "Task")
+
+    events = (await db.execute(
+        select(Event).where(Event.task_id == task_id).order_by(Event.timestamp)
+    )).scalars().all()
+    tool_calls = (await db.execute(
+        select(ToolCall).where(ToolCall.task_id == task_id).order_by(ToolCall.created_at)
+    )).scalars().all()
+    checkpoint = (await db.execute(
+        select(MemoryEntry).where(
+            MemoryEntry.scope == MemoryScope.TASK,
+            MemoryEntry.scope_id == task_id,
+            MemoryEntry.key == "checkpoint",
+        )
+    )).scalars().first()
+
+    return {
+        "task": {"id": str(task.id), "title": task.title, "status": task.status,
+                 "agent_type": task.agent_type, "output_result": task.output_result},
+        "events": [
+            {"event_type": e.event_type, "payload": e.payload, "timestamp": e.timestamp.isoformat(),
+             "tokens_used": e.tokens_used, "duration_ms": e.duration_ms}
+            for e in events
+        ],
+        "tool_calls": [
+            {"tool_name": tc.tool_name, "input_args": tc.input_args, "output_result": tc.output_result,
+             "status": tc.status, "duration_ms": tc.duration_ms}
+            for tc in tool_calls
+        ],
+        "conversation": (checkpoint.value or {}).get("conversation_history", []) if checkpoint else [],
+    }
 
 
 @router.get("/{job_id}/events")
