@@ -8,6 +8,7 @@ from osymandias.runtime.models.tool_definition import ToolDefinition
 from osymandias.runtime.models.tool_call import ToolCall, ToolCallStatus
 from osymandias.runtime.models.event import Event
 from osymandias.runtime.models.memory_entry import MemoryEntry, MemoryScope
+from osymandias.runtime.models.webhook_subscription import WebhookSubscription
 
 __all__ = [
     "Base",
@@ -20,4 +21,5 @@ __all__ = [
     "ToolCall", "ToolCallStatus",
     "Event",
     "MemoryEntry", "MemoryScope",
+    "WebhookSubscription",
 ]

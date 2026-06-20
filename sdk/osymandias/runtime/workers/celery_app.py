@@ -13,6 +13,7 @@ celery_app = Celery(
         "osymandias.runtime.workers.tool_tasks",
         "osymandias.runtime.workers.evaluator_tasks",
         "osymandias.runtime.workers.beat_tasks",
+        "osymandias.runtime.workers.webhook_tasks",
     ],
 )
 
@@ -40,6 +41,7 @@ celery_app.conf.task_routes = {
     "osymandias.runtime.workers.tool_tasks.*":      {"queue": "tools"},
     "osymandias.runtime.workers.evaluator_tasks.*": {"queue": "evaluator"},
     "osymandias.runtime.workers.beat_tasks.*":      {"queue": "scheduler"},
+    "osymandias.runtime.workers.webhook_tasks.*":   {"queue": "tools"},
 }
 
 # ---------------------------------------------------------------------------

@@ -14,6 +14,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from osymandias.runtime.config import settings
 from osymandias.runtime.models.event import Event
 
+# Lifecycle events that fan out to registered webhook subscribers.
+_WEBHOOK_EVENTS = {"JOB_COMPLETED", "JOB_FAILED", "JOB_CANCELLED", "JOB_BUDGET_EXCEEDED"}
+
 # Synchronous Redis client used inside Celery workers (no async loop available)
 _redis_client: _redis.Redis | None = None
 
@@ -70,6 +73,7 @@ class EventEmitter:
         await session.flush()  # get the id without committing
 
         EventEmitter._publish(event)
+        EventEmitter._dispatch_webhooks(event)
         return event
 
     # ------------------------------------------------------------------
@@ -103,11 +107,29 @@ class EventEmitter:
         session.flush()
 
         EventEmitter._publish(event)
+        EventEmitter._dispatch_webhooks(event)
         return event
 
     # ------------------------------------------------------------------
     # Internal
     # ------------------------------------------------------------------
+
+    @staticmethod
+    def _dispatch_webhooks(event: Event) -> None:
+        """Enqueue webhook delivery for lifecycle events. The Celery task does the
+        subscription lookup, so this stays cheap (one enqueue) and no-ops when no
+        subscribers exist."""
+        if event.event_type not in _WEBHOOK_EVENTS or not event.job_id:
+            return
+        try:
+            from osymandias.runtime.workers.celery_app import celery_app
+            celery_app.send_task(
+                "osymandias.runtime.workers.webhook_tasks.deliver_event",
+                args=[event.event_type, str(event.job_id), event.payload],
+                queue="tools",
+            )
+        except Exception as exc:
+            logger.warning("webhook enqueue failed for {} — {}", event.event_type, exc)
 
     @staticmethod
     def _publish(event: Event) -> None:
