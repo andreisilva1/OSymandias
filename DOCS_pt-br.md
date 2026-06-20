@@ -24,10 +24,17 @@
    - [Job em linguagem natural](#job-em-linguagem-natural)
    - [Plano de tarefas explícito (`__task_plan__`)](#plano-de-tarefas-explícito-__task_plan__)
    - [Resubmissão de um job](#resubmissão-de-um-job)
-10. [Páginas do dashboard](#páginas-do-dashboard)
-11. [Provedores de LLM suportados](#provedores-de-llm-suportados)
-12. [Escalabilidade](#escalabilidade)
-13. [Dependências opcionais](#dependências-opcionais)
+10. [Controles de produção](#controles-de-produção)
+    - [Teto de tokens (budget)](#teto-de-tokens-budget)
+    - [Aprovação humana](#aprovação-humana-human-in-the-loop)
+    - [Webhooks de lifecycle](#webhooks-de-lifecycle)
+    - [Breakdown de custo e tokens](#breakdown-de-custo-e-tokens)
+    - [Trace de execução](#trace-de-execução)
+    - [Cache de resposta do LLM](#cache-de-resposta-do-llm)
+11. [Páginas do dashboard](#páginas-do-dashboard)
+12. [Provedores de LLM suportados](#provedores-de-llm-suportados)
+13. [Escalabilidade](#escalabilidade)
+14. [Dependências opcionais](#dependências-opcionais)
 
 ---
 
@@ -786,7 +793,7 @@ curl -X POST http://localhost:47760/api/v1/jobs \
   }'
 ```
 
-Cada entrada em `__task_plan__` aceita as mesmas chaves que os task defs do `ctx.spawn_tasks`: `title` (obrigatório), `agent_type`, `description`.
+Cada entrada em `__task_plan__` aceita as mesmas chaves que os task defs do `ctx.spawn_tasks`: `title` (obrigatório), `agent_type`, `description`, `requires_approval` (ver [Controles de produção](#controles-de-produção)).
 
 ### Resubmissão de um job
 
@@ -814,6 +821,94 @@ print(job["id"])
 ```
 
 Documentação interativa completa da API: **http://localhost:47760/api/v1/docs**
+
+---
+
+## Controles de produção
+
+Recursos para rodar agentes com segurança e observabilidade, sem supervisão.
+
+### Teto de tokens (budget)
+
+Defina `max_tokens` no job. Após cada chamada de LLM o runtime verifica o uso acumulado de tokens entre todos os agentes do job; ao ultrapassar o teto, o job para com status `BUDGET_EXCEEDED` e deixa de despachar novas tasks. Jobs sem teto não têm overhead algum.
+
+```bash
+curl -X POST http://localhost:47760/api/v1/jobs \
+  -H "Content-Type: application/json" \
+  -d '{"title": "Run com teto", "description": "...", "max_tokens": 50000}'
+```
+
+Um evento `JOB_BUDGET_EXCEEDED` é emitido com o uso real no momento da parada.
+
+### Aprovação humana (human-in-the-loop)
+
+Marque uma task como `requires_approval: true` (no `__task_plan__` ou no task def do planner). O scheduler a segura em `HUMAN_REVIEW` (emitindo `TASK_AWAITING_APPROVAL`) em vez de despachá-la; o job permanece ativo enquanto aguarda. Aprove para despachar:
+
+```bash
+curl -X POST http://localhost:47760/api/v1/jobs/<job-id>/tasks/<task-id>/approve
+```
+
+### Webhooks de lifecycle
+
+Registre uma URL para receber um POST sempre que um job atingir um evento de ciclo de vida (`JOB_COMPLETED`, `JOB_FAILED`, `JOB_CANCELLED`, `JOB_BUDGET_EXCEEDED`). Omita `events` para receber todos.
+
+```bash
+# Registrar
+curl -X POST http://localhost:47760/api/v1/webhooks \
+  -H "Content-Type: application/json" \
+  -d '{"url": "https://example.com/hook", "events": ["JOB_COMPLETED", "JOB_FAILED"]}'
+
+# Listar / remover
+curl http://localhost:47760/api/v1/webhooks
+curl -X DELETE http://localhost:47760/api/v1/webhooks/<id>
+```
+
+Payload de entrega: `{"event_type": "...", "job_id": "...", "payload": {...}}`. A entrega é best-effort.
+
+### Breakdown de custo e tokens
+
+Agregação de tokens/custo por agente e por ferramenta de um job. O custo é precificado via dados do LiteLLM (com fallback estático) e acumulado por instância de agente.
+
+```bash
+curl http://localhost:47760/api/v1/jobs/<job-id>/cost-breakdown
+```
+
+```json
+{
+  "by_agent": [{"agent": "ResearchAgent", "tokens": 2468, "cost": 0.012, "instances": 1}],
+  "by_tool":  [{"tool": "web_search", "calls": 1, "cost": 0.0}],
+  "total_tokens": 2468,
+  "total_cost": 0.012
+}
+```
+
+### Trace de execução
+
+A cadeia de raciocínio completa por trás de uma task: seus eventos, tool calls e histórico de conversa registrado.
+
+```bash
+curl http://localhost:47760/api/v1/jobs/<job-id>/tasks/<task-id>/trace
+```
+
+Retorna `{task, events, tool_calls, conversation}`.
+
+### Inspeção de memória
+
+Liste entradas de memória, opcionalmente escopadas a um job ou task específico:
+
+```bash
+curl "http://localhost:47760/api/v1/memory?scope=JOB&scope_id=<job-id>"
+```
+
+### Cache de resposta do LLM
+
+Cache determinístico opcional. Quando habilitado, chamadas idênticas (modelo + mensagens + tools + temperature) retornam a resposta do cache em vez de chamar o provider — cortando custo e latência em retries, replays e iteração de desenvolvimento. Falha de forma graciosa se o Redis estiver indisponível.
+
+```bash
+# .env
+LLM_CACHE_ENABLED=true
+LLM_CACHE_TTL_SECONDS=86400
+```
 
 ---
 

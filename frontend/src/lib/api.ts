@@ -1,4 +1,4 @@
-import type { Job, Task, AgentDefinition, AgentInstance, ToolDefinition, ToolCall, Message, Event, MetricsSummary, MemoryEntry } from "@/types";
+import type { Job, Task, AgentDefinition, AgentInstance, ToolDefinition, ToolCall, Message, Event, MetricsSummary, MemoryEntry, CostBreakdown, TaskTrace, Webhook } from "@/types";
 
 type EventsParams = { limit?: number; job_id?: string; event_type?: string };
 
@@ -27,7 +27,7 @@ export const api = {
       return request<Job[]>(`/api/v1/jobs${qs ? `?${qs}` : ""}`);
     },
     get: (id: string) => request<Job>(`/api/v1/jobs/${id}`),
-    create: (body: { title: string; description?: string; priority?: string; input_payload: Record<string, unknown> }) =>
+    create: (body: { title: string; description?: string; priority?: string; input_payload: Record<string, unknown>; max_tokens?: number | null }) =>
       request<Job>(`/api/v1/jobs`, { method: "POST", body: JSON.stringify(body) }),
     cancel: (id: string) => request<Job>(`/api/v1/jobs/${id}/cancel`, { method: "PATCH" }),
     resubmit: (id: string) => request<Job>(`/api/v1/jobs/${id}/resubmit`, { method: "POST" }),
@@ -36,6 +36,10 @@ export const api = {
     toolCalls: (id: string) => request<ToolCall[]>(`/api/v1/jobs/${id}/tool-calls`),
     agentInstances: (id: string) => request<AgentInstance[]>(`/api/v1/jobs/${id}/agents`),
     output: (id: string) => request<Record<string, unknown>>(`/api/v1/jobs/${id}/output`),
+    costBreakdown: (id: string) => request<CostBreakdown>(`/api/v1/jobs/${id}/cost-breakdown`),
+    trace: (jobId: string, taskId: string) => request<TaskTrace>(`/api/v1/jobs/${jobId}/tasks/${taskId}/trace`),
+    approveTask: (jobId: string, taskId: string) =>
+      request<{ status: string; task_id: string }>(`/api/v1/jobs/${jobId}/tasks/${taskId}/approve`, { method: "POST" }),
     // NOTE: /jobs/{id}/events is SSE — use useJobStream (EventSource) instead of this client
   },
 
@@ -83,7 +87,7 @@ export const api = {
   },
 
   memory: {
-    list: (params?: { scope?: string; limit?: number }) => {
+    list: (params?: { scope?: string; scope_id?: string; limit?: number }) => {
       const p = Object.fromEntries(
         Object.entries(params ?? {}).filter(([, v]) => v !== undefined)
       ) as Record<string, string>;
@@ -91,5 +95,12 @@ export const api = {
       return request<MemoryEntry[]>(`/api/v1/memory${qs ? `?${qs}` : ""}`);
     },
     delete: (id: string) => request<void>(`/api/v1/memory/${id}`, { method: "DELETE" }),
+  },
+
+  webhooks: {
+    list: () => request<Webhook[]>(`/api/v1/webhooks`),
+    create: (body: { url: string; events?: string[] | null }) =>
+      request<Webhook>(`/api/v1/webhooks`, { method: "POST", body: JSON.stringify(body) }),
+    delete: (id: string) => request<void>(`/api/v1/webhooks/${id}`, { method: "DELETE" }),
   },
 };

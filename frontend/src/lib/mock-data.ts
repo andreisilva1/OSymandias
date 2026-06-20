@@ -48,6 +48,7 @@ export const MOCK_JOBS: Job[] = [
 export const MOCK_TASKS: Task[] = [
   {
     id: "t1",
+    requires_approval: false,
     job_id: "a1b2c3d4-0000-0000-0000-000000000001",
     title: "Identify competitors",
     description: "Find the top 5 competitors of Acme Corp.",
@@ -64,6 +65,7 @@ export const MOCK_TASKS: Task[] = [
   },
   {
     id: "t2",
+    requires_approval: false,
     job_id: "a1b2c3d4-0000-0000-0000-000000000001",
     title: "Scrape competitor websites",
     description: "Extract product and pricing data from each competitor site.",
@@ -78,6 +80,7 @@ export const MOCK_TASKS: Task[] = [
   },
   {
     id: "t3",
+    requires_approval: false,
     job_id: "a1b2c3d4-0000-0000-0000-000000000001",
     title: "Analyse recent news",
     description: "Search news for funding, launches, and press releases per competitor.",
@@ -92,6 +95,7 @@ export const MOCK_TASKS: Task[] = [
   },
   {
     id: "t4",
+    requires_approval: false,
     job_id: "a1b2c3d4-0000-0000-0000-000000000001",
     title: "Pricing & positioning analysis",
     description: "Compare pricing tiers and market positioning across competitors.",
@@ -105,6 +109,7 @@ export const MOCK_TASKS: Task[] = [
   },
   {
     id: "t5",
+    requires_approval: false,
     job_id: "a1b2c3d4-0000-0000-0000-000000000001",
     title: "Write final report",
     description: "Consolidate all findings into a structured competitor report.",
@@ -121,6 +126,7 @@ export const MOCK_TASKS: Task[] = [
 export const MOCK_AGENT_INSTANCES: AgentInstance[] = [
   {
     id: "ai1",
+    estimated_cost: 0.0086,
     job_id: "a1b2c3d4-0000-0000-0000-000000000001",
     task_id: "t1",
     agent_definition_name: "ResearchAgent",
@@ -133,6 +139,7 @@ export const MOCK_AGENT_INSTANCES: AgentInstance[] = [
   },
   {
     id: "ai2",
+    estimated_cost: 0.0062,
     job_id: "a1b2c3d4-0000-0000-0000-000000000001",
     task_id: "t2",
     agent_definition_name: "ResearchAgent",
@@ -145,6 +152,7 @@ export const MOCK_AGENT_INSTANCES: AgentInstance[] = [
   },
   {
     id: "ai3",
+    estimated_cost: 0.0056,
     job_id: "a1b2c3d4-0000-0000-0000-000000000001",
     task_id: "t3",
     agent_definition_name: "ResearchAgent",

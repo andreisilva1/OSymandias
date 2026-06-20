@@ -24,10 +24,17 @@
    - [Natural language job](#natural-language-job)
    - [Explicit task plan (`__task_plan__`)](#explicit-task-plan-__task_plan__)
    - [Resubmitting a job](#resubmitting-a-job)
-10. [Dashboard pages](#dashboard-pages)
-11. [Supported LLM providers](#supported-llm-providers)
-12. [Scaling](#scaling)
-13. [Optional dependencies](#optional-dependencies)
+10. [Production controls](#production-controls)
+    - [Token budget cap](#token-budget-cap)
+    - [Human-in-the-loop approval](#human-in-the-loop-approval)
+    - [Lifecycle webhooks](#lifecycle-webhooks)
+    - [Cost & token breakdown](#cost--token-breakdown)
+    - [Execution trace](#execution-trace)
+    - [LLM response cache](#llm-response-cache)
+11. [Dashboard pages](#dashboard-pages)
+12. [Supported LLM providers](#supported-llm-providers)
+13. [Scaling](#scaling)
+14. [Optional dependencies](#optional-dependencies)
 
 ---
 
@@ -787,7 +794,7 @@ curl -X POST http://localhost:47760/api/v1/jobs \
   }'
 ```
 
-Each entry in `__task_plan__` accepts the same keys as `ctx.spawn_tasks` task defs: `title` (required), `agent_type`, `description`.
+Each entry in `__task_plan__` accepts the same keys as `ctx.spawn_tasks` task defs: `title` (required), `agent_type`, `description`, `requires_approval` (see [Production controls](#production-controls)).
 
 ### Resubmitting a job
 
@@ -815,6 +822,94 @@ print(job["id"])
 ```
 
 Full interactive API docs: **http://localhost:47760/api/v1/docs**
+
+---
+
+## Production controls
+
+Features for running agents safely and observably without supervision.
+
+### Token budget cap
+
+Set `max_tokens` on a job. After every LLM call the runtime checks accumulated token usage across all the job's agents; once it exceeds the cap the job halts with status `BUDGET_EXCEEDED` and stops dispatching further tasks. Jobs without a cap pay zero overhead.
+
+```bash
+curl -X POST http://localhost:47760/api/v1/jobs \
+  -H "Content-Type: application/json" \
+  -d '{"title": "Capped run", "description": "...", "max_tokens": 50000}'
+```
+
+A `JOB_BUDGET_EXCEEDED` event is emitted with the actual usage at the moment of the halt.
+
+### Human-in-the-loop approval
+
+Mark a task `requires_approval: true` (in `__task_plan__` or a planner task def). The scheduler holds it in `HUMAN_REVIEW` (emitting `TASK_AWAITING_APPROVAL`) instead of dispatching it; the job stays alive while it waits. Approve it to dispatch:
+
+```bash
+curl -X POST http://localhost:47760/api/v1/jobs/<job-id>/tasks/<task-id>/approve
+```
+
+### Lifecycle webhooks
+
+Register a URL to receive a POST whenever a job reaches a lifecycle event (`JOB_COMPLETED`, `JOB_FAILED`, `JOB_CANCELLED`, `JOB_BUDGET_EXCEEDED`). Omit `events` to receive all.
+
+```bash
+# Register
+curl -X POST http://localhost:47760/api/v1/webhooks \
+  -H "Content-Type: application/json" \
+  -d '{"url": "https://example.com/hook", "events": ["JOB_COMPLETED", "JOB_FAILED"]}'
+
+# List / delete
+curl http://localhost:47760/api/v1/webhooks
+curl -X DELETE http://localhost:47760/api/v1/webhooks/<id>
+```
+
+Delivery payload: `{"event_type": "...", "job_id": "...", "payload": {...}}`. Delivery is best-effort.
+
+### Cost & token breakdown
+
+Per-agent and per-tool token/cost aggregation for a job. Cost is priced via LiteLLM's pricing data (with a static fallback) and accumulated per agent instance.
+
+```bash
+curl http://localhost:47760/api/v1/jobs/<job-id>/cost-breakdown
+```
+
+```json
+{
+  "by_agent": [{"agent": "ResearchAgent", "tokens": 2468, "cost": 0.012, "instances": 1}],
+  "by_tool":  [{"tool": "web_search", "calls": 1, "cost": 0.0}],
+  "total_tokens": 2468,
+  "total_cost": 0.012
+}
+```
+
+### Execution trace
+
+The full reasoning chain behind a task: its events, tool calls, and recorded conversation history.
+
+```bash
+curl http://localhost:47760/api/v1/jobs/<job-id>/tasks/<task-id>/trace
+```
+
+Returns `{task, events, tool_calls, conversation}`.
+
+### Memory inspection
+
+List memory entries, optionally scoped to a specific job or task:
+
+```bash
+curl "http://localhost:47760/api/v1/memory?scope=JOB&scope_id=<job-id>"
+```
+
+### LLM response cache
+
+Opt-in deterministic cache. When enabled, identical (model + messages + tools + temperature) calls return a cached response instead of hitting the provider — cutting cost and latency on retries, replays, and development iteration. Fails open if Redis is unavailable.
+
+```bash
+# .env
+LLM_CACHE_ENABLED=true
+LLM_CACHE_TTL_SECONDS=86400
+```
 
 ---
 

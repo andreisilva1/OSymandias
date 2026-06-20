@@ -108,6 +108,25 @@ def orquestrar(task: str, ctx: OsyContext) -> dict:
 
 ---
 
+## Controles de produção
+
+A parte difícil de agentes não é fazê-los responder — é torná-los seguros para rodar sem supervisão.
+
+- **Limite de tokens (budget)** — defina `max_tokens` no job; ele para com `BUDGET_EXCEEDED` antes de um loop descontrolado queimar sua cota.
+- **Aprovação humana (human-in-the-loop)** — marque uma task como `requires_approval`; ela aguarda em `HUMAN_REVIEW` até você aprovar via API.
+- **Webhooks de lifecycle** — registre uma URL e receba um POST em `JOB_COMPLETED` / `JOB_FAILED` / `BUDGET_EXCEEDED`.
+- **Custo e tokens reais** — breakdown por agente e por ferramenta, precificado via LiteLLM.
+- **Traces de execução** — a cadeia de raciocínio completa (eventos, tool calls, conversa) de qualquer task.
+- **Cache de resposta** — cache determinístico opcional de LLM que corta custo em retries e replays.
+
+```bash
+# Job com teto de tokens que pausa para aprovação
+curl -X POST localhost:47760/api/v1/jobs -d '{"title":"...","max_tokens":50000}'
+curl -X POST localhost:47760/api/v1/jobs/$ID/tasks/$TASK/approve
+```
+
+---
+
 ## Dashboard
 
 >*A interface pode apresentar diferenças em relação à imagem.*

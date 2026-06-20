@@ -11,22 +11,23 @@ import type { JobStatus } from "@/types";
 
 const PAGE_SIZE = 15;
 
-const STATUS_FILTERS = ["ALL", "RUNNING", "PLANNING", "PENDING", "COMPLETED", "FAILED", "CANCELLED"] as const;
+const STATUS_FILTERS = ["ALL", "RUNNING", "PLANNING", "PENDING", "COMPLETED", "FAILED", "CANCELLED", "BUDGET_EXCEEDED"] as const;
 type Filter = (typeof STATUS_FILTERS)[number];
 
 const CARD_CLASS: Record<string, string> = {
   RUNNING: "job-card-running", PLANNING: "job-card-planning",
   COMPLETED: "job-card-completed", FAILED: "job-card-failed",
-  PENDING: "job-card-pending",
+  PENDING: "job-card-pending", BUDGET_EXCEEDED: "job-card-failed",
 };
 const DOT_CLASS: Record<string, string> = {
   RUNNING: "dot-running", PLANNING: "dot-planning", PENDING: "dot-pending",
   WAITING: "dot-waiting", FAILED: "dot-failed", CRASHED: "dot-failed",
-  COMPLETED: "dot-completed", CANCELLED: "dot-cancelled",
+  COMPLETED: "dot-completed", CANCELLED: "dot-cancelled", BUDGET_EXCEEDED: "dot-failed",
 };
 const BADGE_CLASS: Record<string, string> = {
   RUNNING: "badge-running", PLANNING: "badge-planning", COMPLETED: "badge-completed",
   FAILED: "badge-failed", PENDING: "badge-pending", CANCELLED: "badge-cancelled",
+  BUDGET_EXCEEDED: "badge-failed",
 };
 
 function NewProcessModal({ onClose }: { onClose: () => void }) {
@@ -34,12 +35,17 @@ function NewProcessModal({ onClose }: { onClose: () => void }) {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [priority, setPriority] = useState("NORMAL");
+  const [maxTokens, setMaxTokens] = useState("");
   const [payload, setPayload] = useState("{}");
   const [err, setErr] = useState("");
 
   const { mutate, isPending } = useMutation({
     mutationFn: () =>
-      api.jobs.create({ title, description: description || undefined, priority, input_payload: JSON.parse(payload) }),
+      api.jobs.create({
+        title, description: description || undefined, priority,
+        input_payload: JSON.parse(payload),
+        max_tokens: maxTokens.trim() ? Number(maxTokens) : null,
+      }),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["jobs"] }); onClose(); },
   });
 
@@ -71,6 +77,11 @@ function NewProcessModal({ onClose }: { onClose: () => void }) {
             <select value={priority} onChange={(e) => setPriority(e.target.value)} className="os-input">
               <option>HIGH</option><option>NORMAL</option><option>LOW</option>
             </select>
+          </div>
+          <div>
+            <label className="os-label block mb-1.5">MAX TOKENS <span style={{ color: "#384858", textTransform: "none", letterSpacing: 0, fontSize: 10 }}>(budget cap — optional)</span></label>
+            <input type="number" min={0} value={maxTokens} onChange={(e) => setMaxTokens(e.target.value)}
+              className="os-input" placeholder="e.g. 50000 — halts the job if exceeded" />
           </div>
           <div>
             <label className="os-label block mb-1.5">PAYLOAD <span style={{ color: "#384858", textTransform: "none", letterSpacing: 0, fontSize: 10 }}>(JSON)</span></label>

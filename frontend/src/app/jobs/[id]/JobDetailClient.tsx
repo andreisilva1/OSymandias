@@ -1,19 +1,20 @@
 "use client";
 
 import { useState, useMemo } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { usePathname, useRouter } from "next/navigation";
-import { useJob, useJobTasks, useJobToolCalls, useJobMessages, useJobAgentInstances } from "@/hooks/useJobData";
+import { useJob, useJobTasks, useJobToolCalls, useJobMessages, useJobAgentInstances, useJobCostBreakdown, useTaskTrace } from "@/hooks/useJobData";
 import { useJobStream } from "@/hooks/useJobStream";
 import { StatusBadge } from "@/components/jobs/JobStatusBadge";
 import { ExecutionTimeline } from "@/components/execution/ExecutionTimeline";
 import { AgentGraph } from "@/components/execution/AgentGraph";
 import { formatCost, formatTokens, formatDuration } from "@/lib/utils";
-import { Clock, Cpu, DollarSign, Zap, Loader2, RotateCcw } from "lucide-react";
+import { Clock, Cpu, DollarSign, Zap, Loader2, RotateCcw, Check } from "lucide-react";
 import { JobOutputViewer } from "@/components/jobs/JobOutputViewer";
 import { api } from "@/lib/api";
 
-type Tab = "OVERVIEW" | "TIMELINE" | "CALL_GRAPH" | "EVENT_LOG" | "SYSCALLS" | "OUTPUT";
-const TABS: Tab[] = ["OVERVIEW", "TIMELINE", "CALL_GRAPH", "EVENT_LOG", "SYSCALLS", "OUTPUT"];
+type Tab = "OVERVIEW" | "TIMELINE" | "CALL_GRAPH" | "COST" | "TRACE" | "EVENT_LOG" | "SYSCALLS" | "OUTPUT";
+const TABS: Tab[] = ["OVERVIEW", "TIMELINE", "CALL_GRAPH", "COST", "TRACE", "EVENT_LOG", "SYSCALLS", "OUTPUT"];
 
 const EV_COLOR: Record<string, string> = {
   JOB_CREATED:"text-cyan", JOB_STARTED:"text-cyan", JOB_COMPLETED:"text-green", JOB_FAILED:"text-red",
@@ -30,16 +31,21 @@ export function JobDetailClient({ id: staticId }: { id: string }) {
   const pathname = usePathname();
   const router = useRouter();
   const id = pathname?.split("/")[2] || staticId;
+  const qc = useQueryClient();
   const [tab, setTab] = useState<Tab>("OVERVIEW");
   const [resubmitting, setResubmitting] = useState(false);
+  const [approving, setApproving] = useState<string | null>(null);
+  const [traceTaskId, setTraceTaskId] = useState<string | null>(null);
   const { data: job, isLoading } = useJob(id);
   const { data: tasks = [] } = useJobTasks(id);
   const { data: toolCalls = [] } = useJobToolCalls(id);
   const { data: messages = [] } = useJobMessages(id);
   const { data: agentInstances = [] } = useJobAgentInstances(id);
+  const { data: costBreakdown } = useJobCostBreakdown(id);
+  const { data: trace, isLoading: traceLoading } = useTaskTrace(id, traceTaskId);
   const { events } = useJobStream(id);
 
-  const isTerminal = job ? ["COMPLETED", "FAILED", "CANCELLED"].includes(job.status) : false;
+  const isTerminal = job ? ["COMPLETED", "FAILED", "CANCELLED", "BUDGET_EXCEEDED"].includes(job.status) : false;
 
   const liveProgress = useMemo(() => {
     if (isTerminal) return {};
@@ -83,6 +89,19 @@ export function JobDetailClient({ id: staticId }: { id: string }) {
     }
   }
 
+  async function handleApprove(taskId: string) {
+    setApproving(taskId);
+    try {
+      await api.jobs.approveTask(id, taskId);
+      qc.invalidateQueries({ queryKey: ["job-tasks", id] });
+      qc.invalidateQueries({ queryKey: ["job", id] });
+    } catch (e) {
+      console.error("Approve failed", e);
+    } finally {
+      setApproving(null);
+    }
+  }
+
 
   return (
     <div className="flex flex-col h-full">
@@ -118,7 +137,7 @@ export function JobDetailClient({ id: staticId }: { id: string }) {
         <div className="flex items-center gap-6 mt-3.5 text-[11px]">
           {[
             { icon: Clock,      label: "runtime",  value: formatDuration(duration) },
-            { icon: Cpu,        label: "tokens",   value: formatTokens(job.total_tokens) },
+            { icon: Cpu,        label: "tokens",   value: job.max_tokens ? `${formatTokens(job.total_tokens)} / ${formatTokens(job.max_tokens)}` : formatTokens(job.total_tokens) },
             { icon: DollarSign, label: "cost",     value: formatCost(job.estimated_cost) },
             { icon: Zap,        label: "tasks",    value: `${tasks.filter(t => t.status === "COMPLETED").length}/${tasks.length}` },
           ].map(({ icon: Icon, label, value }) => (
@@ -203,7 +222,19 @@ export function JobDetailClient({ id: staticId }: { id: string }) {
                           {task.attempt_count > 0 && <span className="ml-2 text-amber">attempt {task.attempt_count}/{task.max_attempts}</span>}
                         </div>
                       </div>
-                      <div className="ml-3 shrink-0">
+                      <div className="ml-3 shrink-0 flex items-center gap-2">
+                        {task.status === "HUMAN_REVIEW" && (
+                          <button
+                            onClick={() => handleApprove(task.id)}
+                            disabled={approving === task.id}
+                            className="flex items-center gap-1 px-2 py-1 text-[10px] font-medium border border-[#C9A84C]/50 text-[#C9A84C] rounded-[var(--radius)] hover:bg-[#C9A84C]/10 transition-colors disabled:opacity-50"
+                          >
+                            {approving === task.id
+                              ? <Loader2 className="w-3 h-3 animate-spin" />
+                              : <Check className="w-3 h-3" />}
+                            approve
+                          </button>
+                        )}
                         <StatusBadge status={task.status} />
                       </div>
                     </div>
@@ -270,6 +301,86 @@ export function JobDetailClient({ id: staticId }: { id: string }) {
         {tab === "CALL_GRAPH" && (
           <div className="p-5 h-[500px]">
             <AgentGraph instances={agentInstances} messages={messages} />
+          </div>
+        )}
+
+        {/* COST */}
+        {tab === "COST" && (
+          <div className="p-5 grid grid-cols-2 gap-4">
+            <div>
+              <div className="os-label mb-2">
+                BY AGENT <span className="text-muted-foreground/30 normal-case tracking-normal ml-1">{costBreakdown?.total_tokens ?? 0} tokens total</span>
+              </div>
+              <div className="border border-border bg-card rounded-[var(--radius)] divide-y divide-border/40">
+                {(costBreakdown?.by_agent ?? []).map((a) => (
+                  <div key={a.agent} className="flex items-center justify-between px-3.5 py-2.5">
+                    <span className="text-[12px] text-foreground">{a.agent}</span>
+                    <span className="text-[11px] text-muted-foreground font-mono tabular">
+                      {formatTokens(a.tokens)} · {formatCost(a.cost)} · {a.instances}×
+                    </span>
+                  </div>
+                ))}
+                {(costBreakdown?.by_agent?.length ?? 0) === 0 && (
+                  <div className="px-3.5 py-5 text-[12px] text-muted-foreground/30 text-center">no agent activity</div>
+                )}
+              </div>
+            </div>
+            <div>
+              <div className="os-label mb-2">
+                BY TOOL <span className="text-muted-foreground/30 normal-case tracking-normal ml-1">{formatCost(costBreakdown?.total_cost ?? 0)} total</span>
+              </div>
+              <div className="border border-border bg-card rounded-[var(--radius)] divide-y divide-border/40">
+                {(costBreakdown?.by_tool ?? []).map((t) => (
+                  <div key={t.tool} className="flex items-center justify-between px-3.5 py-2.5">
+                    <span className="text-[12px] text-amber font-mono">{t.tool}</span>
+                    <span className="text-[11px] text-muted-foreground font-mono tabular">{t.calls} calls · {formatCost(t.cost)}</span>
+                  </div>
+                ))}
+                {(costBreakdown?.by_tool?.length ?? 0) === 0 && (
+                  <div className="px-3.5 py-5 text-[12px] text-muted-foreground/30 text-center">no tool calls</div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* TRACE */}
+        {tab === "TRACE" && (
+          <div className="p-5 space-y-4">
+            <div className="flex items-center gap-3">
+              <span className="os-label">TASK</span>
+              <select
+                className="filter-select"
+                value={traceTaskId ?? ""}
+                onChange={(e) => setTraceTaskId(e.target.value || null)}
+              >
+                <option value="">select a task…</option>
+                {tasks.map((t) => <option key={t.id} value={t.id}>{t.title}</option>)}
+              </select>
+            </div>
+
+            {!traceTaskId && <div className="text-[12px] text-muted-foreground/30 py-8 text-center">pick a task to inspect its reasoning chain</div>}
+            {traceTaskId && traceLoading && <div className="flex items-center gap-2 text-[12px] text-muted-foreground py-8 justify-center"><Loader2 className="w-4 h-4 animate-spin" /> loading trace…</div>}
+
+            {trace && !traceLoading && (
+              <div className="space-y-4">
+                {/* Conversation — the reasoning chain */}
+                <div>
+                  <div className="os-label mb-2">CONVERSATION <span className="text-muted-foreground/30 normal-case tracking-normal ml-1">{trace.conversation.length} messages</span></div>
+                  <div className="space-y-1.5">
+                    {trace.conversation.map((m, i) => (
+                      <div key={i} className="border border-border bg-card rounded-[var(--radius)] p-3">
+                        <div className="os-label mb-1" style={{ color: m.role === "assistant" ? "#C9A84C" : m.role === "tool" ? "#60A890" : "#607080" }}>{m.role}</div>
+                        <pre className="text-[11px] text-muted-foreground/80 whitespace-pre-wrap font-mono leading-relaxed overflow-auto max-h-48">
+                          {m.content ? String(m.content) : (m.tool_calls ? JSON.stringify(m.tool_calls, null, 2) : <span className="text-muted-foreground/30">—</span>)}
+                        </pre>
+                      </div>
+                    ))}
+                    {trace.conversation.length === 0 && <div className="text-[12px] text-muted-foreground/30 py-5 text-center border border-border rounded-[var(--radius)]">no conversation recorded</div>}
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         )}
 

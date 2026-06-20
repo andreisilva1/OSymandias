@@ -54,6 +54,29 @@ export function useJobAgentInstances(jobId: string | null) {
   });
 }
 
+export function useJobCostBreakdown(jobId: string | null) {
+  return useQuery({
+    queryKey: ["job-cost", jobId],
+    queryFn: () => api.jobs.costBreakdown(jobId!),
+    enabled: !!jobId,
+  });
+}
+
+export function useTaskTrace(jobId: string | null, taskId: string | null) {
+  return useQuery({
+    queryKey: ["task-trace", jobId, taskId],
+    queryFn: () => api.jobs.trace(jobId!, taskId!),
+    enabled: !!jobId && !!taskId,
+  });
+}
+
+export function useWebhooks() {
+  return useQuery({
+    queryKey: ["webhooks"],
+    queryFn: () => api.webhooks.list(),
+  });
+}
+
 export function useMetrics() {
   return useQuery({
     queryKey: ["metrics"],

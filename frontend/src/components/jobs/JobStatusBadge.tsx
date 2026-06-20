@@ -21,6 +21,8 @@ const DOT_CLASS: Record<string, string> = {
   TERMINATED:       "dot-completed",
   SUCCESS:          "dot-success",
   CANCELLED:        "dot-cancelled",
+  BUDGET_EXCEEDED:  "dot-failed",
+  HUMAN_REVIEW:     "dot-amber",
 };
 
 const TEXT_CLASS: Record<string, string> = {
@@ -42,6 +44,8 @@ const TEXT_CLASS: Record<string, string> = {
   TERMINATED:       "text-muted-foreground",
   SUCCESS:          "text-muted-foreground",
   CANCELLED:        "text-muted-foreground",
+  BUDGET_EXCEEDED:  "text-red",
+  HUMAN_REVIEW:     "text-amber",
 };
 
 export function StatusBadge({ status }: { status: AnyStatus }) {

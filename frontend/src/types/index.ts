@@ -2,7 +2,7 @@
 // Job
 // ---------------------------------------------------------------------------
 
-export type JobStatus = "PENDING" | "PLANNING" | "RUNNING" | "COMPLETED" | "FAILED" | "CANCELLED";
+export type JobStatus = "PENDING" | "PLANNING" | "RUNNING" | "COMPLETED" | "FAILED" | "CANCELLED" | "BUDGET_EXCEEDED";
 export type JobPriority = "HIGH" | "NORMAL" | "LOW";
 
 export interface Job {
@@ -16,6 +16,7 @@ export interface Job {
   retry_policy: { max_attempts: number; backoff: string; backoff_seconds: number };
   total_tokens: number;
   estimated_cost: number;
+  max_tokens?: number | null;
   created_at: string;
   started_at?: string;
   completed_at?: string;
@@ -34,7 +35,8 @@ export type TaskStatus =
   | "COMPLETED"
   | "FAILED"
   | "RETRYING"
-  | "CANCELLED";
+  | "CANCELLED"
+  | "HUMAN_REVIEW";
 
 export interface Task {
   id: string;
@@ -49,6 +51,7 @@ export interface Task {
   output_result?: Record<string, unknown>;
   attempt_count: number;
   max_attempts: number;
+  requires_approval: boolean;
   evaluation_score?: number;
   evaluation_feedback?: string;
   created_at: string;
@@ -98,6 +101,7 @@ export interface AgentInstance {
   status: AgentInstanceStatus;
   iteration_count: number;
   tokens_used: number;
+  estimated_cost: number;
   tool_calls_count: number;
   last_heartbeat_at?: string;
   created_at: string;
@@ -211,4 +215,30 @@ export interface MemoryEntry {
   created_at: string;
   last_accessed_at?: string;
   expires_at?: string;
+}
+
+// ---------------------------------------------------------------------------
+// Production controls (1.1)
+// ---------------------------------------------------------------------------
+
+export interface CostBreakdown {
+  by_agent: { agent: string; tokens: number; cost: number; instances: number }[];
+  by_tool: { tool: string; calls: number; cost: number }[];
+  total_tokens: number;
+  total_cost: number;
+}
+
+export interface TaskTrace {
+  task: { id: string; title: string; status: string; agent_type?: string; output_result?: Record<string, unknown> };
+  events: { event_type: string; payload: Record<string, unknown>; timestamp: string; tokens_used?: number; duration_ms?: number }[];
+  tool_calls: { tool_name: string; input_args?: Record<string, unknown>; output_result?: Record<string, unknown>; status: string; duration_ms?: number }[];
+  conversation: { role: string; content?: string; tool_calls?: unknown }[];
+}
+
+export interface Webhook {
+  id: string;
+  url: string;
+  events?: string[] | null;
+  is_active: boolean;
+  created_at: string;
 }

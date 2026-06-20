@@ -3,7 +3,7 @@
 import React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Activity, Cpu, Bot, Terminal, HardDrive, Rss, BarChart2 } from "lucide-react";
+import { Activity, Cpu, Bot, Terminal, HardDrive, Rss, BarChart2, Webhook } from "lucide-react";
 import { useJobs } from "@/hooks/useJobData";
 
 type NavItem = {
@@ -22,8 +22,9 @@ const NAV: { section: string; items: NavItem[] }[] = [
   ]},
   { section: "MEMORY",       items: [{ label: "Memory Layer",   href: "/memory", icon: HardDrive }] },
   { section: "OBSERVABILITY",items: [
-    { label: "Event Stream", href: "/events",  icon: Rss },
-    { label: "Metrics",      href: "/metrics", icon: BarChart2 },
+    { label: "Event Stream", href: "/events",   icon: Rss },
+    { label: "Metrics",      href: "/metrics",  icon: BarChart2 },
+    { label: "Webhooks",     href: "/webhooks", icon: Webhook },
   ]},
 ];
 
@@ -66,7 +67,7 @@ export function Sidebar() {
               OSymandias
             </div>
             <div style={{ fontSize: 10, fontWeight: 300, color: "#384858", marginTop: 1 }}>
-              v0.1.0 · runtime
+              v1.1.0 · runtime
             </div>
           </div>
         </div>
