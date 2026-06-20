@@ -19,6 +19,7 @@ const STATUS_COLOR: Record<string, string> = {
   READY: "bg-amber-500",
   ASSIGNED: "bg-blue-400",
   CANCELLED: "bg-zinc-600",
+  HUMAN_REVIEW: "bg-amber-400",
 };
 
 interface TreeNode {

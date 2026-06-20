@@ -379,6 +379,41 @@ export function JobDetailClient({ id: staticId }: { id: string }) {
                     {trace.conversation.length === 0 && <div className="text-[12px] text-muted-foreground/30 py-5 text-center border border-border rounded-[var(--radius)]">no conversation recorded</div>}
                   </div>
                 </div>
+
+                {/* Tool calls for this task */}
+                <div>
+                  <div className="os-label mb-2">TOOL CALLS <span className="text-muted-foreground/30 normal-case tracking-normal ml-1">{trace.tool_calls.length}</span></div>
+                  <div className="border border-border bg-card rounded-[var(--radius)] divide-y divide-border/40">
+                    {trace.tool_calls.map((tc, i) => (
+                      <div key={i} className="px-3.5 py-2.5 flex items-start gap-3">
+                        <span className="text-[11px] font-mono text-amber shrink-0">{tc.tool_name}</span>
+                        <span className={`text-[11px] shrink-0 ${TC_COLOR[tc.status] ?? "text-muted-foreground"}`}>{tc.status}</span>
+                        <pre className="text-[10px] text-muted-foreground/50 overflow-hidden truncate flex-1">{tc.output_result ? JSON.stringify(tc.output_result) : JSON.stringify(tc.input_args ?? {})}</pre>
+                        <span className="text-[10px] text-muted-foreground/30 font-mono shrink-0">{tc.duration_ms != null ? `${tc.duration_ms}ms` : "—"}</span>
+                      </div>
+                    ))}
+                    {trace.tool_calls.length === 0 && <div className="px-3.5 py-5 text-[12px] text-muted-foreground/30 text-center">no tool calls</div>}
+                  </div>
+                </div>
+
+                {/* Events for this task */}
+                <div>
+                  <div className="os-label mb-2">EVENTS <span className="text-muted-foreground/30 normal-case tracking-normal ml-1">{trace.events.length}</span></div>
+                  <div className="border border-border bg-card rounded-[var(--radius)] divide-y divide-border/40">
+                    {trace.events.map((e, i) => {
+                      const ts = new Date(e.timestamp);
+                      const t = `${String(ts.getHours()).padStart(2,"0")}:${String(ts.getMinutes()).padStart(2,"0")}:${String(ts.getSeconds()).padStart(2,"0")}`;
+                      return (
+                        <div key={i} className="px-3.5 py-2 flex items-center gap-3">
+                          <span className="text-[11px] text-muted-foreground/40 tabular font-mono shrink-0">{t}</span>
+                          <span className={`text-[11px] font-medium ${EV_COLOR[e.event_type] ?? "text-muted-foreground"}`}>{e.event_type}</span>
+                          <span className="text-[10px] text-muted-foreground/30 font-mono ml-auto shrink-0">{e.duration_ms != null ? `${e.duration_ms}ms` : ""}{e.tokens_used ? ` · ${e.tokens_used} tok` : ""}</span>
+                        </div>
+                      );
+                    })}
+                    {trace.events.length === 0 && <div className="px-3.5 py-5 text-[12px] text-muted-foreground/30 text-center">no events</div>}
+                  </div>
+                </div>
               </div>
             )}
           </div>

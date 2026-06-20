@@ -49,12 +49,17 @@ function QuickJobModal({ onClose }: { onClose: () => void }) {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [priority, setPriority] = useState("NORMAL");
+  const [maxTokens, setMaxTokens] = useState("");
   const [payload, setPayload] = useState("{}");
   const [err, setErr] = useState("");
 
   const { mutate, isPending } = useMutation({
     mutationFn: () =>
-      api.jobs.create({ title, description: description || undefined, priority, input_payload: JSON.parse(payload) }),
+      api.jobs.create({
+        title, description: description || undefined, priority,
+        input_payload: JSON.parse(payload),
+        max_tokens: maxTokens.trim() ? Number(maxTokens) : null,
+      }),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["jobs"] }); onClose(); },
   });
 
@@ -87,6 +92,11 @@ function QuickJobModal({ onClose }: { onClose: () => void }) {
             <select value={priority} onChange={(e) => setPriority(e.target.value)} className="os-input">
               <option>HIGH</option><option>NORMAL</option><option>LOW</option>
             </select>
+          </div>
+          <div>
+            <label className="os-label block mb-1.5">MAX TOKENS <span style={{ color: "#384858", textTransform: "none", letterSpacing: 0, fontSize: 10 }}>(budget cap — optional)</span></label>
+            <input type="number" min={0} value={maxTokens} onChange={(e) => setMaxTokens(e.target.value)}
+              className="os-input" placeholder="e.g. 50000 — halts the job if exceeded" />
           </div>
           <div>
             <label className="os-label block mb-1.5">PAYLOAD <span style={{ color: "#384858", textTransform: "none", letterSpacing: 0, fontSize: 10 }}>(JSON)</span></label>
