@@ -12,12 +12,15 @@ router = APIRouter(prefix="/api/v1/memory", tags=["memory"])
 @router.get("", response_model=list[MemoryEntryResponse])
 async def list_memory(
     scope: str | None = None,
+    scope_id: str | None = None,
     limit: int = Query(100, le=500),
     db: AsyncSession = Depends(get_db),
 ):
     q = select(MemoryEntry).order_by(desc(MemoryEntry.created_at)).limit(limit)
     if scope:
         q = q.where(MemoryEntry.scope == scope.upper())
+    if scope_id:
+        q = q.where(MemoryEntry.scope_id == scope_id)
     result = await db.execute(q)
     return result.scalars().all()
 
