@@ -124,7 +124,8 @@ def run_agent_task(self, task_id: str, agent_instance_id: str) -> None:
             )
 
     except BudgetExceeded as exc:
-        session.rollback()
+        # No rollback: the agent's flushed token/cost usage is valid and must be
+        # persisted so the job reflects what was actually spent before halting.
         _handle_budget_exceeded(task_id, job_id, str(exc), session=session)
         logger.warning("run_agent_task: job {} halted on budget — {}", job_id, exc)
     except Exception as exc:
@@ -174,7 +175,6 @@ def run_planner(self, job_id: str, agent_instance_id: str) -> None:
         try:
             result = agent.run_sync(extra_context=context)
         except BudgetExceeded as exc:
-            session.rollback()
             _handle_budget_exceeded(None, job.id, str(exc), session=session)
             logger.warning("run_planner: job {} halted on budget — {}", job_id, exc)
             return
@@ -399,14 +399,19 @@ def _update_job_totals(session, job_id: uuid.UUID) -> None:
         select(func.coalesce(func.sum(AgentInstance.tokens_used), 0))
         .where(AgentInstance.job_id == job_id)
     ) or 0
-    cost = session.scalar(
+    # Total cost = LLM cost (accumulated per agent instance) + tool cost.
+    llm_cost = session.scalar(
+        select(func.coalesce(func.sum(AgentInstance.estimated_cost), 0))
+        .where(AgentInstance.job_id == job_id)
+    ) or 0
+    tool_cost = session.scalar(
         select(func.coalesce(func.sum(ToolCall.estimated_cost), 0))
         .where(ToolCall.job_id == job_id)
     ) or 0
     job = session.get(Job, job_id)
     if job:
         job.total_tokens = int(tokens)
-        job.estimated_cost = float(cost)
+        job.estimated_cost = float(llm_cost) + float(tool_cost)
         session.flush()
 
 

@@ -126,7 +126,13 @@ def chat_completion(
 
     input_tokens = response.usage.prompt_tokens if response.usage else 0
     output_tokens = response.usage.completion_tokens if response.usage else 0
-    cost = estimate_cost(_provider, _model, input_tokens, output_tokens)
+
+    # Prefer litellm's own pricing DB (kept current upstream); fall back to our
+    # static table only if litellm can't price this model.
+    try:
+        cost = float(litellm.completion_cost(completion_response=response))
+    except Exception:
+        cost = estimate_cost(_provider, _model, input_tokens, output_tokens)
 
     tool_calls = None
     if hasattr(message, "tool_calls") and message.tool_calls:

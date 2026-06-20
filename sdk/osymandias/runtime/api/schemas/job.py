@@ -105,6 +105,7 @@ class AgentInstanceResponse(BaseModel):
     status: str
     iteration_count: int
     tokens_used: int
+    estimated_cost: float
     tool_calls_count: int
     last_heartbeat_at: datetime | None
     created_at: datetime

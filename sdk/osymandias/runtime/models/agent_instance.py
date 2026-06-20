@@ -3,7 +3,7 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String
+from sqlalchemy import DateTime, ForeignKey, Integer, Numeric, String
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -49,6 +49,8 @@ class AgentInstance(Base, TimestampMixin):
     )
     iteration_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     tokens_used: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    # Accumulated USD cost of this agent's LLM calls (tool costs live on ToolCall).
+    estimated_cost: Mapped[float] = mapped_column(Numeric(10, 6), nullable=False, default=0.0)
     tool_calls_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     last_heartbeat_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), index=True

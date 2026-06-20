@@ -190,6 +190,7 @@ class BaseAgent:
 
             duration_ms = int((datetime.now(timezone.utc) - start).total_seconds() * 1000)
             self.instance.tokens_used += response["input_tokens"] + response["output_tokens"]
+            self.instance.estimated_cost = float(self.instance.estimated_cost) + response["cost_estimate"]
             self.instance.iteration_count = iteration + 1
             self.session.flush()
 
