@@ -20,7 +20,7 @@ from osymandias.runtime.api.schemas.job import (
 )
 from osymandias.runtime.config import settings
 from osymandias.runtime.core.event_emitter import EventEmitter
-from osymandias.runtime.models import Job, JobPriority, JobStatus, Task
+from osymandias.runtime.models import Job, JobPriority, JobStatus, Task, TaskStatus
 
 router = APIRouter(prefix="/api/v1/jobs", tags=["jobs"])
 
@@ -138,6 +138,25 @@ async def get_job_tasks(job_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
         return responses
 
     return []
+
+
+@router.post("/{job_id}/tasks/{task_id}/approve")
+async def approve_task(job_id: uuid.UUID, task_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
+    """Approve a task waiting in HUMAN_REVIEW so the scheduler dispatches it."""
+    task = await get_or_404(db, Task, task_id, "Task")
+    if task.status != TaskStatus.HUMAN_REVIEW:
+        raise HTTPException(status_code=400, detail=f"Task is not awaiting approval (status {task.status})")
+
+    task.status = TaskStatus.READY
+    await EventEmitter.emit(db, "TASK_APPROVED", {"title": task.title}, job_id=task.job_id, task_id=task.id)
+    await db.commit()
+
+    from osymandias.runtime.workers.celery_app import celery_app
+    celery_app.send_task(
+        "osymandias.runtime.workers.scheduler_tasks.dispatch_task",
+        args=[str(task.id)], queue="scheduler",
+    )
+    return {"status": "approved", "task_id": str(task.id)}
 
 
 @router.get("/{job_id}/messages", response_model=list[MessageResponse])

@@ -244,6 +244,7 @@ def run_planner(self, job_id: str, agent_instance_id: str) -> None:
                     "input_payload": job.input_payload,
                 },
                 max_attempts=job.retry_policy.get("max_attempts", 3),
+                requires_approval=task_def.get("requires_approval", False),
             )
             session.add(task)
             session.flush()

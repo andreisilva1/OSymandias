@@ -158,7 +158,7 @@ def resolve_dag(self, job_id: str) -> None:
             still_active = [
                 t for t in all_tasks
                 if t.status in (TaskStatus.PENDING, TaskStatus.WAITING, TaskStatus.READY,
-                                TaskStatus.ASSIGNED, TaskStatus.RUNNING)
+                                TaskStatus.ASSIGNED, TaskStatus.RUNNING, TaskStatus.HUMAN_REVIEW)
                 or (t.status == TaskStatus.RETRYING and t.attempt_count < t.max_attempts)
             ]
             if not still_active:
@@ -195,6 +195,7 @@ def _apply_task_plan(session, job: Job, task_plan: list[dict]) -> None:
                 "job_description": job.description or "",
             },
             max_attempts=td.get("max_attempts", 3),
+            requires_approval=td.get("requires_approval", False),
         )
         session.add(task)
         session.flush()
@@ -218,6 +219,15 @@ def _apply_task_plan(session, job: Job, task_plan: list[dict]) -> None:
 
 
 def _mark_ready_and_dispatch(session, task: Task, job: Job) -> None:
+    # Human-in-the-loop gate: hold the task for approval instead of dispatching.
+    if task.requires_approval:
+        task.status = TaskStatus.HUMAN_REVIEW
+        session.flush()
+        EventEmitter.emit_sync(
+            session, "TASK_AWAITING_APPROVAL", {"title": task.title},
+            job_id=job.id, task_id=task.id,
+        )
+        return
     task.status = TaskStatus.READY
     session.flush()
     EventEmitter.emit_sync(session, "TASK_READY", {"title": task.title}, job_id=job.id, task_id=task.id)

@@ -52,6 +52,7 @@ class TaskResponse(BaseModel):
     output_result: dict[str, Any] | None
     attempt_count: int
     max_attempts: int
+    requires_approval: bool
     evaluation_score: float | None
     evaluation_feedback: str | None
     depends_on: list[str] = []
