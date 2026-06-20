@@ -17,6 +17,7 @@ class JobCreate(BaseModel):
     priority: str = "NORMAL"
     input_payload: dict[str, Any] = Field(default_factory=dict)
     retry_policy: RetryPolicy = Field(default_factory=RetryPolicy)
+    max_tokens: int | None = None
 
 
 class JobResponse(BaseModel):
@@ -30,6 +31,7 @@ class JobResponse(BaseModel):
     retry_policy: dict[str, Any]
     total_tokens: int
     estimated_cost: float
+    max_tokens: int | None
     created_at: datetime
     started_at: datetime | None
     completed_at: datetime | None

@@ -21,6 +21,7 @@ class JobStatus(str, enum.Enum):
     COMPLETED = "COMPLETED"
     FAILED = "FAILED"
     CANCELLED = "CANCELLED"
+    BUDGET_EXCEEDED = "BUDGET_EXCEEDED"
 
 
 class JobPriority(str, enum.Enum):
@@ -52,6 +53,9 @@ class Job(Base, TimestampMixin):
     )
     total_tokens: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     estimated_cost: Mapped[float] = mapped_column(Numeric(10, 6), nullable=False, default=0.0)
+    # Optional hard cap — when set, the job halts (status BUDGET_EXCEEDED) once
+    # accumulated token usage across all its agents exceeds this value.
+    max_tokens: Mapped[int | None] = mapped_column(Integer)
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 

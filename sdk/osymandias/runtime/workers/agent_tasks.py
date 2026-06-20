@@ -9,7 +9,7 @@ from loguru import logger
 from sqlalchemy import func, select
 
 from osymandias.decorator import _AGENT_REGISTRY
-from osymandias.runtime.agents.base_agent import BaseAgent, MaxIterationsExceeded
+from osymandias.runtime.agents.base_agent import BaseAgent, BudgetExceeded, MaxIterationsExceeded
 from osymandias.runtime.context import OsyContext
 from osymandias.runtime.core.event_emitter import EventEmitter
 from osymandias.runtime.db.sync_session import get_sync_session
@@ -123,6 +123,10 @@ def run_agent_task(self, task_id: str, agent_instance_id: str) -> None:
                 args=[str(task.job_id)], queue="scheduler",
             )
 
+    except BudgetExceeded as exc:
+        session.rollback()
+        _handle_budget_exceeded(task_id, job_id, str(exc), session=session)
+        logger.warning("run_agent_task: job {} halted on budget — {}", job_id, exc)
     except Exception as exc:
         session.rollback()
         if job_id:
@@ -169,6 +173,11 @@ def run_planner(self, job_id: str, agent_instance_id: str) -> None:
 
         try:
             result = agent.run_sync(extra_context=context)
+        except BudgetExceeded as exc:
+            session.rollback()
+            _handle_budget_exceeded(None, job.id, str(exc), session=session)
+            logger.warning("run_planner: job {} halted on budget — {}", job_id, exc)
+            return
         except (MaxIterationsExceeded, Exception) as plan_exc:
             logger.warning("PlannerAgent failed ({}), applying fallback plan", plan_exc)
             EventEmitter.emit_sync(
@@ -399,6 +408,35 @@ def _update_job_totals(session, job_id: uuid.UUID) -> None:
         job.total_tokens = int(tokens)
         job.estimated_cost = float(cost)
         session.flush()
+
+
+def _handle_budget_exceeded(task_id, job_id, error: str, session) -> None:
+    """Mark the task FAILED and the whole job BUDGET_EXCEEDED so the scheduler
+    stops dispatching further work. Reuses the caller's session."""
+    try:
+        task = session.get(Task, uuid.UUID(task_id)) if task_id else None
+        if task:
+            task.status = TaskStatus.FAILED
+            task.completed_at = datetime.now(timezone.utc)
+        job = session.get(Job, job_id) if job_id else None
+        terminal = (JobStatus.COMPLETED, JobStatus.FAILED, JobStatus.CANCELLED, JobStatus.BUDGET_EXCEEDED)
+        if job and job.status not in terminal:
+            job.status = JobStatus.BUDGET_EXCEEDED
+            job.completed_at = datetime.now(timezone.utc)
+        session.flush()
+        if job_id:
+            _update_job_totals(session, job_id)
+        EventEmitter.emit_sync(
+            session,
+            "JOB_BUDGET_EXCEEDED",
+            {"error": error[:300]},
+            job_id=job_id,
+            task_id=task.id if task else None,
+        )
+        session.commit()
+    except Exception:
+        session.rollback()
+        logger.exception("_handle_budget_exceeded failed for job {}", job_id)
 
 
 def _handle_task_failure(task_id: str, agent_instance_id: str, error: str, session=None) -> None:

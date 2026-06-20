@@ -100,6 +100,11 @@ def resolve_dag(self, job_id: str) -> None:
         if not job:
             return
 
+        # Stop dispatching once the job has reached a terminal state (e.g. a
+        # sibling task tripped the token budget). Prevents new agent spawns.
+        if job.status in (JobStatus.BUDGET_EXCEEDED, JobStatus.CANCELLED, JobStatus.FAILED, JobStatus.COMPLETED):
+            return
+
         tasks = session.scalars(
             select(Task).where(
                 Task.job_id == uuid.UUID(job_id),

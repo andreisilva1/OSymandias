@@ -33,6 +33,7 @@ async def create_job(body: JobCreate, db: AsyncSession = Depends(get_db)):
         priority=JobPriority(body.priority),
         input_payload=body.input_payload,
         retry_policy=body.retry_policy.model_dump(),
+        max_tokens=body.max_tokens,
     )
     db.add(job)
     await db.flush()
@@ -81,6 +82,7 @@ async def resubmit_job(job_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
         priority=original.priority,
         input_payload=original.input_payload,
         retry_policy=original.retry_policy,
+        max_tokens=original.max_tokens,
     )
     db.add(job)
     await db.flush()

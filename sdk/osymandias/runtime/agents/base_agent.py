@@ -11,6 +11,7 @@ from typing import Any
 
 import redis as _redis
 from loguru import logger
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from osymandias.runtime.config import settings
@@ -20,6 +21,7 @@ from osymandias.runtime.models import (
     AgentDefinition,
     AgentInstance,
     AgentInstanceStatus,
+    Job,
     Task,
     TaskStatus,
     ToolCall,
@@ -29,6 +31,11 @@ from osymandias.runtime.models.memory_entry import MemoryScope
 
 
 class MaxIterationsExceeded(Exception):
+    pass
+
+
+class BudgetExceeded(Exception):
+    """Raised when a job's accumulated token usage exceeds its max_tokens cap."""
     pass
 
 
@@ -106,6 +113,18 @@ class BaseAgent:
 
         max_iter = self.definition.max_iterations
 
+        # Budget snapshot — only query prior usage when the job sets a cap, so
+        # jobs without a budget pay zero overhead. Live usage is then tracked
+        # in-memory via self.instance.tokens_used (no per-iteration queries).
+        job = self.session.get(Job, self.job_id)
+        max_tokens = job.max_tokens if job else None
+        prior_tokens = 0
+        if max_tokens:
+            prior_tokens = self.session.scalar(
+                select(func.coalesce(func.sum(AgentInstance.tokens_used), 0))
+                .where(AgentInstance.job_id == self.job_id, AgentInstance.id != self.instance.id)
+            ) or 0
+
         for iteration in range(self.instance.iteration_count, max_iter):
             self._heartbeat()
 
@@ -173,6 +192,13 @@ class BaseAgent:
             self.instance.tokens_used += response["input_tokens"] + response["output_tokens"]
             self.instance.iteration_count = iteration + 1
             self.session.flush()
+
+            if max_tokens and prior_tokens + self.instance.tokens_used > max_tokens:
+                used = prior_tokens + self.instance.tokens_used
+                self._terminate(success=False, reason="BUDGET_EXCEEDED")
+                raise BudgetExceeded(
+                    f"Job {self.job_id} exceeded token budget {max_tokens} ({used} used)"
+                )
 
             EventEmitter.emit_sync(
                 self.session,
