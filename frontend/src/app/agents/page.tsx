@@ -131,18 +131,18 @@ function SchemaEditor({ fields, onChange }: { fields: SchemaField[]; onChange: (
       {fields.map((f, i) => (
         <div key={i} className="flex items-center gap-1.5">
           <input value={f.key} onChange={e => update(i, { key: e.target.value })}
-            placeholder="field_name" className={`${inp} font-mono text-[10px] py-0.5 h-6 flex-1`} />
+            placeholder="field_name" className={`${inp} font-mono text-[11px] h-8 flex-1`} style={{ minWidth: 0 }} />
           <select value={f.type} onChange={e => update(i, { type: e.target.value })}
-            className={`${inp} text-[10px] py-0.5 h-6 w-24`}>
+            className={`${inp} text-[11px] h-8`} style={{ width: "6.5rem", flexShrink: 0 }}>
             {FIELD_TYPES.map(t => <option key={t}>{t}</option>)}
           </select>
           <button onClick={() => update(i, { required: !f.required })}
-            className={`text-[8px] px-1.5 h-6 border rounded transition-colors ${f.required ? "border-amber/60 text-amber bg-amber/10" : "border-border text-muted-foreground"}`}>
+            className={`text-[9px] px-2.5 h-8 border rounded transition-colors shrink-0 ${f.required ? "border-amber/60 text-amber bg-amber/10" : "border-border text-muted-foreground"}`}>
             REQ
           </button>
           <button onClick={() => onChange(fields.filter((_, idx) => idx !== i))}
-            className="text-muted-foreground/40 hover:text-red transition-colors">
-            <X className="w-3 h-3" />
+            className="text-muted-foreground/40 hover:text-red transition-colors shrink-0">
+            <X className="w-3.5 h-3.5" />
           </button>
         </div>
       ))}
