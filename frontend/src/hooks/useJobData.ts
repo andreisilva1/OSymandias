@@ -7,6 +7,7 @@ export function useJobs(params?: { status?: string }) {
   return useQuery({
     queryKey: ["jobs", params],
     queryFn: () => api.jobs.list(params),
+    refetchInterval: 4000,
   });
 }
 
