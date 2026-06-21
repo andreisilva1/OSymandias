@@ -113,16 +113,15 @@ def orchestrate(task: str, ctx: OsyContext) -> dict:
 The hard part of agents isn't getting them to answer — it's making them safe to run unattended.
 
 - **Token budget caps** — set `max_tokens` on a job; it halts with `BUDGET_EXCEEDED` before a runaway loop burns your quota.
-- **Human-in-the-loop gates** — mark a task `requires_approval`; it waits in `HUMAN_REVIEW` until you approve it via the API.
+- **Human-in-the-loop gates** — mark an **agent** or a **task** `requires_approval`; it waits in `HUMAN_REVIEW` until approved. A cross-job **Approvals** inbox lists everything pending.
 - **Lifecycle webhooks** — register a URL and get a POST on `JOB_COMPLETED` / `JOB_FAILED` / `BUDGET_EXCEEDED`.
 - **Real cost & token tracking** — per-agent and per-tool breakdown, priced via LiteLLM.
 - **Execution traces** — the full reasoning chain (events, tool calls, conversation) for any task.
 - **Response cache** — opt-in deterministic LLM cache that cuts cost on retries and replays.
 
 ```bash
-# Budget-capped job that pauses for approval
-curl -X POST localhost:47760/api/v1/jobs -d '{"title":"...","max_tokens":50000}'
-curl -X POST localhost:47760/api/v1/jobs/$ID/tasks/$TASK/approve
+# From the terminal — submit a goal and watch it run
+osy submit "research the EV market and write a report" --max-tokens 50000 --watch
 ```
 
 ---

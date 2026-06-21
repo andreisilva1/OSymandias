@@ -92,6 +92,8 @@ Prompts interativos solicitam o provedor de LLM e a chave de API. Cria:
 | `osy_tools.py` | Exemplo de arquivo com `@osy.tool` para começar |
 | `osymandias.toml` | Config do projeto (agent_modules comentado) |
 
+Use `--example` para também gerar o `example_agent.py` — um par `@osy.tool` + `@osy.agent` runnable, auto-descoberto pelo `osy serve`. O comando então imprime uma dica de `osy submit` pronta pra rodar, levando você de "instalei" a "job rodando" em três comandos.
+
 Seguro para re-executar — arquivos existentes são ignorados.
 
 ---
@@ -153,6 +155,31 @@ osy logs abc123                      # últimos 50 eventos do job abc123
 osy logs abc123 -f                   # stream ao vivo de todos os eventos do job
 osy logs abc123 -f -t TASK_PROGRESS  # stream ao vivo apenas de eventos de progresso
 ```
+
+---
+
+### `osy submit`
+
+Submete um job pelo terminal — sem curl, sem dashboard.
+
+```
+osy submit "<objetivo>" [--watch] [--max-tokens N] [--priority P] [--title T]
+```
+
+| Opção | Padrão | Descrição |
+|---|---|---|
+| `<objetivo>` | — | O objetivo do job em linguagem natural (obrigatório) |
+| `--watch` / `-w` | off | Stream ao vivo dos eventos do job até um estado terminal |
+| `--max-tokens` | — | Teto de tokens — o job para se ultrapassar |
+| `--priority` | `NORMAL` | `HIGH` · `NORMAL` · `LOW` |
+| `--title` | (objetivo) | Título do job |
+
+```bash
+osy submit "pesquise o mercado de EV e escreva um relatório"
+osy submit "resuma X" --max-tokens 50000 --watch
+```
+
+Imprime o id do novo job e um link do dashboard; com `--watch`, faz stream dos eventos até o job completar, falhar ou estourar o budget.
 
 ---
 
@@ -842,10 +869,21 @@ Um evento `JOB_BUDGET_EXCEEDED` é emitido com o uso real no momento da parada.
 
 ### Aprovação humana (human-in-the-loop)
 
-Marque uma task como `requires_approval: true` (no `__task_plan__` ou no task def do planner). O scheduler a segura em `HUMAN_REVIEW` (emitindo `TASK_AWAITING_APPROVAL`) em vez de despachá-la; o job permanece ativo enquanto aguarda. Aprove para despachar:
+Segure trabalho sensível em `HUMAN_REVIEW` (emitindo `TASK_AWAITING_APPROVAL`) até um humano aprovar — garantido pelo scheduler, não só pela UI. Há dois níveis, combinados com OR:
+
+- **Por agente** — defina `requires_approval` num `AgentDefinition` (form de agente no dashboard, `PUT /api/v1/agents/{name}`, ou `@osy.agent("MeuAgente", requires_approval=True)`). Toda task roteada pra esse agente gateia automaticamente. É o ponto de controle natural, já que quem cria as tasks é o planner, não você.
+- **Por task** — defina `requires_approval: true` numa task do `__task_plan__`, do output do planner, ou do `ctx.spawn_tasks([...])`. Override pontual pra DAGs explícitos.
+
+Aprove para despachar:
 
 ```bash
 curl -X POST http://localhost:47760/api/v1/jobs/<job-id>/tasks/<task-id>/approve
+```
+
+Liste tudo aguardando revisão entre todos os jobs (alimenta a inbox **Approvals** do dashboard):
+
+```bash
+curl "http://localhost:47760/api/v1/tasks?status=HUMAN_REVIEW"
 ```
 
 ### Webhooks de lifecycle
@@ -917,12 +955,14 @@ LLM_CACHE_TTL_SECONDS=86400
 | Página | URL | Descrição |
 |------|-----|-------------|
 | Jobs | `/jobs` | Lista de jobs — busca, filtro por status, paginação |
-| Detalhe do job | `/jobs/{id}` | Visualizador de output (JSON/markdown/imagem/áudio), feed de eventos, árvore de tarefas, botão de resubmissão |
+| Detalhe do job | `/jobs/{id}` | Visualizador de output, feed de eventos, timeline de tarefas, abas de custo & trace, banner de falha, approve por task, resubmissão |
+| Approvals | `/approvals` | Inbox cross-job de tasks em `HUMAN_REVIEW`, cada uma com botão approve (badge de contagem ao vivo na sidebar) |
 | Agentes | `/agents` | Registro de agentes — nativos e externos, painel de detalhes adaptativo, filtro por tipo/framework |
 | Ferramentas | `/tools` | Ferramentas nativas e funções `@osy.tool` |
 | Memória | `/memory` | Navegar e buscar entradas de memória de jobs/agentes, deletar chaves individuais |
 | Eventos | `/events` | Stream de eventos global ao vivo — pausar/retomar, filtrar por job |
 | Métricas | `/metrics` | Gráficos de 7 dias: jobs, tokens, estimativa de custo, taxa de sucesso |
+| Webhooks | `/webhooks` | Registrar/remover assinantes de webhooks de lifecycle |
 
 ### Preview de output ao vivo
 
