@@ -46,6 +46,37 @@ RUNTIME_PORT     = 47760   # FastAPI
 FRONTEND_PORT    = 47759   # nginx
 
 
+# Event colouring + formatting shared by `osy logs` and `osy submit --watch`.
+_EV_COLOR = {
+    "JOB_CREATED": "cyan",     "JOB_STARTED": "cyan",
+    "JOB_COMPLETED": "green",  "JOB_FAILED": "red",   "JOB_CANCELLED": "yellow",
+    "JOB_BUDGET_EXCEEDED": "bold red",
+    "TASK_CREATED": "cyan",    "TASK_STARTED": "blue",
+    "TASK_COMPLETED": "green", "TASK_FAILED": "red",  "TASK_PROGRESS": "yellow",
+    "TASK_AWAITING_APPROVAL": "yellow", "TASK_APPROVED": "green",
+    "AGENT_RUNNING": "blue",   "AGENT_TERMINATED": "green",
+    "TOOL_CALL_STARTED": "yellow", "TOOL_CALL_COMPLETED": "green",
+    "LLM_CALL_STARTED": "dim", "LLM_CALL_COMPLETED": "dim",
+    "PLANNER_FALLBACK": "bold red",
+}
+
+
+def _print_event(ev: dict) -> None:
+    ts = ev.get("timestamp", "")[:19].replace("T", " ")
+    etype = ev.get("event_type", "EVENT")
+    color = _EV_COLOR.get(etype, "white")
+    payload = ev.get("payload") or {}
+    task_id = ev.get("task_id", "")
+    tid = f"[dim]{task_id[:8]}[/dim] " if task_id else ""
+    detail = (
+        payload.get("title") or payload.get("tool_name") or
+        payload.get("agent_type") or payload.get("step") or
+        payload.get("message") or payload.get("reason") or ""
+    )
+    detail_str = f"  [dim]{detail}[/dim]" if detail else ""
+    console.print(f"[dim]{ts}[/dim]  {tid}[{color}]{etype}[/{color}]{detail_str}")
+
+
 # ─── osy init ────────────────────────────────────────────────────────────────
 
 @app.command()
@@ -306,6 +337,100 @@ def serve(
     manager.wait_all()
 
 
+# ─── osy submit ──────────────────────────────────────────────────────────────
+
+@app.command()
+def submit(
+    description: str = typer.Argument(..., help="The job goal in plain English."),
+    title: str = typer.Option(None, "--title", help="Job title (defaults to the description)."),
+    max_tokens: int = typer.Option(None, "--max-tokens", help="Token budget cap — the job halts if exceeded."),
+    priority: str = typer.Option("NORMAL", "--priority", help="HIGH | NORMAL | LOW."),
+    watch: bool = typer.Option(False, "--watch", "-w", help="Stream the job's events live until it finishes."),
+):
+    """Submit a job from the terminal and (optionally) watch it run.
+
+    Examples:\n
+        osy submit "research the EV market and write a report"\n
+        osy submit "summarise X" --max-tokens 50000 --watch
+    """
+    import os
+    import json as _json
+    import httpx
+    from pathlib import Path
+
+    cwd = Path.cwd()
+    env_file = cwd / ENV_FILENAME
+    if env_file.exists():
+        from dotenv import load_dotenv
+        load_dotenv(env_file, override=True)
+
+    api_base = f"http://localhost:{RUNTIME_PORT}/api/v1"
+    body: dict = {
+        "title": title or (description[:60] + ("…" if len(description) > 60 else "")),
+        "description": description,
+        "priority": priority.upper(),
+    }
+    if max_tokens is not None:
+        body["max_tokens"] = max_tokens
+
+    try:
+        with httpx.Client(timeout=10) as c:
+            resp = c.post(f"{api_base}/jobs", json=body)
+            resp.raise_for_status()
+            job = resp.json()
+    except httpx.ConnectError:
+        console.print(f"[red]✗ Cannot reach {api_base} — is `osy serve` running?[/red]")
+        raise typer.Exit(1)
+    except httpx.HTTPStatusError as exc:
+        console.print(f"[red]✗ Submit failed: {exc.response.status_code} {exc.response.text}[/red]")
+        raise typer.Exit(1)
+
+    job_id = job["id"]
+    console.print(f"[green]✓[/green] Job submitted  [cyan]{job_id}[/cyan]")
+    console.print(f"[dim]  dashboard: http://localhost:{FRONTEND_PORT}/jobs/{job_id}[/dim]")
+
+    if not watch:
+        console.print(f"[dim]  tail with: osy logs {job_id[:8]} -f[/dim]")
+        return
+
+    # ── Watch: stream events until the job reaches a terminal state ──────────
+    import redis as _redis
+    redis_url = os.environ.get("OSY_REDIS_URL", "redis://localhost:47763/0")
+    _TERMINAL = {"JOB_COMPLETED", "JOB_FAILED", "JOB_CANCELLED", "JOB_BUDGET_EXCEEDED"}
+    console.print("\n[dim]Streaming events (Ctrl+C to stop)…[/dim]")
+    try:
+        r = _redis.from_url(redis_url, decode_responses=True)
+        pubsub = r.pubsub(ignore_subscribe_messages=True)
+        pubsub.subscribe(f"events:job:{job_id}")
+        done = False
+        with httpx.Client(timeout=5) as c:
+            while not done:
+                msg = pubsub.get_message(timeout=2.0)
+                if msg and msg["type"] == "message":
+                    try:
+                        ev = _json.loads(msg["data"])
+                    except Exception:
+                        continue
+                    _print_event(ev)
+                    if ev.get("event_type") in _TERMINAL:
+                        done = True
+                else:
+                    # No event in the window — poll status so a missed terminal
+                    # event (job finished before we subscribed) can't hang us.
+                    try:
+                        st = c.get(f"{api_base}/jobs/{job_id}").json().get("status")
+                        if st in ("COMPLETED", "FAILED", "CANCELLED", "BUDGET_EXCEEDED"):
+                            console.print(f"[dim]— job {st}[/dim]")
+                            done = True
+                    except Exception:
+                        pass
+    except KeyboardInterrupt:
+        console.print("\n[dim]Stopped.[/dim]")
+    except Exception as exc:
+        console.print(f"[red]✗ Redis error: {exc}[/red]")
+        raise typer.Exit(1)
+
+
 # ─── osy logs ────────────────────────────────────────────────────────────────
 
 @app.command()
@@ -353,33 +478,6 @@ def logs(
             raise typer.Exit(1)
 
     # ── Print past events ─────────────────────────────────────────────────────
-    _EV_COLOR = {
-        "JOB_CREATED": "cyan",    "JOB_STARTED": "cyan",
-        "JOB_COMPLETED": "green", "JOB_FAILED": "red",  "JOB_CANCELLED": "yellow",
-        "TASK_CREATED": "cyan",   "TASK_STARTED": "blue",
-        "TASK_COMPLETED": "green","TASK_FAILED": "red",  "TASK_PROGRESS": "yellow",
-        "AGENT_RUNNING": "blue",  "AGENT_TERMINATED": "green",
-        "TOOL_CALL_STARTED": "yellow", "TOOL_CALL_COMPLETED": "green",
-        "LLM_CALL_STARTED": "dim", "LLM_CALL_COMPLETED": "dim",
-        "PLANNER_FALLBACK": "bold red",
-    }
-
-    def _print_event(ev: dict) -> None:
-        ts = ev.get("timestamp", "")[:19].replace("T", " ")
-        etype = ev.get("event_type", "EVENT")
-        color = _EV_COLOR.get(etype, "white")
-        payload = ev.get("payload") or {}
-        task_id = ev.get("task_id", "")
-        tid = f"[dim]{task_id[:8]}[/dim] " if task_id else ""
-        # Pick most informative payload key
-        detail = (
-            payload.get("title") or payload.get("tool_name") or
-            payload.get("agent_type") or payload.get("step") or
-            payload.get("message") or payload.get("reason") or ""
-        )
-        detail_str = f"  [dim]{detail}[/dim]" if detail else ""
-        console.print(f"[dim]{ts}[/dim]  {tid}[{color}]{etype}[/{color}]{detail_str}")
-
     try:
         with httpx.Client(timeout=10) as c:
             params: dict = {"limit": limit}
