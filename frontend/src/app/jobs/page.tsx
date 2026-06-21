@@ -5,7 +5,7 @@ import { useState, useMemo } from "react";
 import { useQueryClient, useMutation } from "@tanstack/react-query";
 import { useJobs } from "@/hooks/useJobData";
 import { formatRelative, formatCost, formatTokens } from "@/lib/utils";
-import { Plus, Loader2, ChevronRight, ChevronLeft, Search } from "lucide-react";
+import { Plus, Loader2, ChevronRight, ChevronLeft, Search, Cpu } from "lucide-react";
 import { api } from "@/lib/api";
 import type { JobStatus } from "@/types";
 
@@ -249,12 +249,37 @@ export default function ProcessesPage() {
             </Link>
           ))}
 
-          {jobs.length === 0 && !isLoading && (
+          {jobs.length === 0 && !isLoading && allJobs.length > 0 && (
             <div style={{
               display: "flex", alignItems: "center", justifyContent: "center",
               padding: "48px 0", fontSize: 13, color: "#607080",
             }}>
               No processes match the current filter.
+            </div>
+          )}
+
+          {allJobs.length === 0 && !isLoading && (
+            <div style={{
+              display: "flex", flexDirection: "column", alignItems: "center", gap: 14,
+              padding: "72px 0", textAlign: "center",
+            }}>
+              <div style={{
+                width: 52, height: 52, borderRadius: 14, display: "flex",
+                alignItems: "center", justifyContent: "center",
+                border: "1px solid #1E2830", background: "#10151E",
+              }}>
+                <Cpu style={{ width: 24, height: 24, color: "#384858" }} />
+              </div>
+              <div>
+                <div style={{ fontSize: 15, fontWeight: 600, color: "#D8E0E8" }}>No processes yet</div>
+                <div style={{ fontSize: 13, color: "#607080", marginTop: 4, maxWidth: 360 }}>
+                  Spawn your first process — describe a goal in plain English and the planner decomposes it into agents.
+                </div>
+              </div>
+              <button onClick={() => setShowModal(true)} className="btn btn-primary" style={{ marginTop: 4 }}>
+                <Plus style={{ width: 14, height: 14 }} />
+                Spawn your first process
+              </button>
             </div>
           )}
         </div>
