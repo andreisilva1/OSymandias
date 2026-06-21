@@ -509,6 +509,7 @@ async def seed():
                     agent_kind=AGENT_KIND_EXTERNAL,
                     callable_ref=entry.callable_ref,
                     framework=entry.framework,
+                    requires_approval=entry.requires_approval,
                     is_active=True,
                 ))
             else:
@@ -519,6 +520,7 @@ async def seed():
                 existing.agent_kind = AGENT_KIND_EXTERNAL
                 existing.callable_ref = entry.callable_ref
                 existing.framework = entry.framework
+                existing.requires_approval = entry.requires_approval
 
         await session.commit()
     logger.info("Seed complete.")

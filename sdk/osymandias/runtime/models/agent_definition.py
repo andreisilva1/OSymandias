@@ -32,6 +32,10 @@ class AgentDefinition(Base, TimestampMixin):
     agent_kind: Mapped[str] = mapped_column(String(20), nullable=False, default=AGENT_KIND_BUILTIN)
     callable_ref: Mapped[str | None] = mapped_column(Text)
     framework: Mapped[str | None] = mapped_column(String(64))
+    # When true, every task routed to this agent waits in HUMAN_REVIEW until
+    # approved — a per-agent human-in-the-loop gate (Task.requires_approval is
+    # the per-task override).
+    requires_approval: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 

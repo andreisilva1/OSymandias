@@ -28,6 +28,7 @@ class _AgentEntry:
     llm_model: str | None
     llm_provider: str | None
     framework: str | None
+    requires_approval: bool
 
 
 def _extract_description(fn: Callable) -> str:
@@ -66,6 +67,7 @@ class _Osy:
         llm_model: str | None = None,
         llm_provider: str | None = None,
         framework: str | None = None,
+        requires_approval: bool = False,
     ) -> Callable:
         """Register a callable as an external OSymandias agent.
 
@@ -82,6 +84,8 @@ class _Osy:
             tools:         Tool names this agent is known to use.
             input_schema:  Pydantic model or JSON Schema dict describing expected input.
             output_schema: Pydantic model or JSON Schema dict describing output shape.
+            requires_approval: When True, every task routed to this agent waits in
+                           HUMAN_REVIEW until approved via the API/dashboard.
         """
         def decorator(fn: Callable) -> Callable:
             out_schema: dict = {}
@@ -109,6 +113,7 @@ class _Osy:
                 llm_model=llm_model,
                 llm_provider=llm_provider,
                 framework=framework,
+                requires_approval=requires_approval,
             )
             _AGENT_REGISTRY[name] = entry
             return fn

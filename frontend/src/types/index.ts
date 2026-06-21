@@ -82,6 +82,7 @@ export interface AgentDefinition {
   agent_kind?: "builtin" | "external";
   callable_ref?: string;
   framework?: string;
+  requires_approval?: boolean;
 }
 
 export type AgentInstanceStatus =

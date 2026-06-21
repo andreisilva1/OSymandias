@@ -12,6 +12,7 @@ from sqlalchemy import select
 from osymandias.runtime.core.event_emitter import EventEmitter
 from osymandias.runtime.db.sync_session import get_sync_session
 from osymandias.runtime.models import (
+    AgentDefinition,
     AgentInstance,
     AgentInstanceStatus,
     Job,
@@ -220,7 +221,10 @@ def _apply_task_plan(session, job: Job, task_plan: list[dict]) -> None:
 
 def _mark_ready_and_dispatch(session, task: Task, job: Job) -> None:
     # Human-in-the-loop gate: hold the task for approval instead of dispatching.
-    if task.requires_approval:
+    # Two sources: per-task override OR a per-agent policy on its AgentDefinition.
+    agent_def = session.get(AgentDefinition, task.agent_type) if task.agent_type else None
+    needs_approval = task.requires_approval or bool(agent_def and agent_def.requires_approval)
+    if needs_approval:
         task.status = TaskStatus.HUMAN_REVIEW
         session.flush()
         EventEmitter.emit_sync(

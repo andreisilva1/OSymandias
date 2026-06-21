@@ -203,6 +203,7 @@ class OsyContext:
                     "job_description": td.get("description", ""),
                 },
                 max_attempts=3,
+                requires_approval=td.get("requires_approval", False),
             )
             self._session.add(child)
             self._session.flush()

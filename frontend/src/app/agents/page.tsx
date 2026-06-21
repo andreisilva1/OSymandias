@@ -179,7 +179,7 @@ function RegisterModal({ tools, onClose }: { tools: ToolDefinition[]; onClose: (
   const [form, setForm] = useState({
     name: "", role: "worker", description: "",
     system_prompt_template: "", llm_provider: "ollama", llm_model: "llama3.2",
-    max_iterations: 10, timeout_seconds: 120,
+    max_iterations: 10, timeout_seconds: 120, requires_approval: false,
   });
   const [allowedTools, setAllowedTools] = useState<string[]>([]);
   const [err, setErr] = useState("");
@@ -242,6 +242,11 @@ function RegisterModal({ tools, onClose }: { tools: ToolDefinition[]; onClose: (
               <input type="number" min={10} max={600} value={form.timeout_seconds} onChange={e => setForm({ ...form, timeout_seconds: +e.target.value })} className={inp} />
             </div>
           </div>
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input type="checkbox" checked={form.requires_approval} onChange={e => setForm({ ...form, requires_approval: e.target.checked })} />
+            <span className="text-[12px] text-foreground">Requires approval</span>
+            <span className="text-[11px] text-muted-foreground/60">— tasks routed here wait in HUMAN_REVIEW</span>
+          </label>
           <div>
             <label className={lbl}>TOOLS</label>
             <div className="flex flex-wrap gap-1.5 p-3 border border-border bg-background">
@@ -287,6 +292,7 @@ function DetailPanel({ agent, tools, onClose, onCloned }: {
     llm_model:              agent.llm_model,
     max_iterations:         agent.max_iterations,
     timeout_seconds:        agent.timeout_seconds,
+    requires_approval:      agent.requires_approval ?? false,
   });
   const [allowedTools, setAllowedTools] = useState<string[]>(agent.allowed_tools);
   const [outputFields, setOutputFields] = useState<SchemaField[]>(() =>
@@ -298,6 +304,7 @@ function DetailPanel({ agent, tools, onClose, onCloned }: {
   const { mutate: save, isPending: saving } = useMutation({
     mutationFn: () => api.agents.update(agent.name, {
       ...(isExternal ? {} : form),
+      requires_approval: form.requires_approval,  // runtime policy — editable for any agent kind
       allowed_tools: isExternal ? undefined : allowedTools,
       output_schema: outputFields.length ? fieldsToSchema(outputFields) : undefined,
     }),
@@ -476,6 +483,13 @@ function DetailPanel({ agent, tools, onClose, onCloned }: {
             </div>
           </div>
         )}
+
+        {/* requires approval — any agent kind */}
+        <label className="flex items-center gap-2 cursor-pointer">
+          <input type="checkbox" checked={form.requires_approval} onChange={e => setForm({ ...form, requires_approval: e.target.checked })} />
+          <span className="text-[12px] text-foreground">Requires approval</span>
+          <span className="text-[11px] text-muted-foreground/60">— tasks routed here wait in HUMAN_REVIEW</span>
+        </label>
 
         {/* system prompt — builtin only */}
         {!isExternal && (

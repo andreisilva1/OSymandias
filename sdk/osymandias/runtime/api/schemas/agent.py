@@ -17,6 +17,7 @@ class AgentDefinitionCreate(BaseModel):
     max_iterations: int = 20
     timeout_seconds: int = 120
     output_schema: dict[str, Any] | None = None
+    requires_approval: bool = False
 
 
 class AgentDefinitionUpdate(BaseModel):
@@ -28,6 +29,7 @@ class AgentDefinitionUpdate(BaseModel):
     max_iterations: int | None = None
     timeout_seconds: int | None = None
     output_schema: dict[str, Any] | None = None
+    requires_approval: bool | None = None
 
 
 class AgentDefinitionResponse(BaseModel):
@@ -48,6 +50,7 @@ class AgentDefinitionResponse(BaseModel):
     agent_kind: str | None = None
     callable_ref: str | None = None
     framework: str | None = None
+    requires_approval: bool = False
 
     model_config = {"from_attributes": True}
 
