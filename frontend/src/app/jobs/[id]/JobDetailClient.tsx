@@ -3,13 +3,13 @@
 import { useState, useMemo } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { usePathname, useRouter } from "next/navigation";
-import { useJob, useJobTasks, useJobToolCalls, useJobMessages, useJobAgentInstances, useJobCostBreakdown, useTaskTrace } from "@/hooks/useJobData";
+import { useJob, useJobTasks, useJobToolCalls, useJobMessages, useJobAgentInstances, useJobCostBreakdown, useTaskTrace, useEvents } from "@/hooks/useJobData";
 import { useJobStream } from "@/hooks/useJobStream";
 import { StatusBadge } from "@/components/jobs/JobStatusBadge";
 import { ExecutionTimeline } from "@/components/execution/ExecutionTimeline";
 import { AgentGraph } from "@/components/execution/AgentGraph";
 import { formatCost, formatTokens, formatDuration } from "@/lib/utils";
-import { Clock, Cpu, DollarSign, Zap, Loader2, RotateCcw, Check } from "lucide-react";
+import { Clock, Cpu, DollarSign, Zap, Loader2, RotateCcw, Check, AlertTriangle } from "lucide-react";
 import { JobOutputViewer } from "@/components/jobs/JobOutputViewer";
 import { api } from "@/lib/api";
 
@@ -41,6 +41,7 @@ export function JobDetailClient({ id: staticId }: { id: string }) {
   const { data: toolCalls = [] } = useJobToolCalls(id);
   const { data: messages = [] } = useJobMessages(id);
   const { data: agentInstances = [] } = useJobAgentInstances(id);
+  const { data: apiEvents = [] } = useEvents({ job_id: id, limit: 100 });
   const { data: costBreakdown } = useJobCostBreakdown(id);
   const { data: trace, isLoading: traceLoading } = useTaskTrace(id, traceTaskId);
   const { events } = useJobStream(id);
@@ -69,6 +70,16 @@ export function JobDetailClient({ id: staticId }: { id: string }) {
       </div>
     );
   }
+
+  const isFailed = ["FAILED", "BUDGET_EXCEEDED"].includes(job.status);
+  const failureEvent = isFailed
+    ? apiEvents.find(e =>
+        ["JOB_BUDGET_EXCEEDED", "JOB_FAILED", "TASK_FAILED"].includes(e.event_type) &&
+        (e.payload?.error || e.payload?.reason))
+    : undefined;
+  const failureReason = failureEvent
+    ? String(failureEvent.payload.error || failureEvent.payload.reason)
+    : "";
 
   const duration =
     job.started_at && job.completed_at
@@ -149,6 +160,21 @@ export function JobDetailClient({ id: staticId }: { id: string }) {
           ))}
         </div>
       </div>
+
+      {/* Failure banner */}
+      {isFailed && (
+        <div className="shrink-0 flex items-start gap-2.5 px-5 py-3 border-b border-red/30 bg-red/[0.06]">
+          <AlertTriangle className="w-4 h-4 text-red shrink-0 mt-px" />
+          <div className="min-w-0">
+            <span className="text-[12px] font-medium text-red">
+              {job.status === "BUDGET_EXCEEDED" ? "Budget exceeded" : "Job failed"}
+            </span>
+            {failureReason && (
+              <span className="text-[12px] text-muted-foreground ml-2 break-words">{failureReason}</span>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Tab bar */}
       <div className="flex items-center border-b border-border px-5 shrink-0 bg-card/50">
