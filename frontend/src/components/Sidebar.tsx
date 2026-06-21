@@ -3,8 +3,8 @@
 import React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Activity, Cpu, Bot, Terminal, HardDrive, Rss, BarChart2, Webhook } from "lucide-react";
-import { useJobs } from "@/hooks/useJobData";
+import { Activity, Cpu, Bot, Terminal, HardDrive, Rss, BarChart2, Webhook, ShieldCheck } from "lucide-react";
+import { useJobs, useTasksByStatus } from "@/hooks/useJobData";
 
 type NavItem = {
   label: string;
@@ -15,7 +15,10 @@ type NavItem = {
 
 const NAV: { section: string; items: NavItem[] }[] = [
   { section: "RUNTIME",      items: [{ label: "Dashboard",      href: "/",       icon: Activity }] },
-  { section: "KERNEL",       items: [{ label: "Processes",      href: "/jobs",   icon: Cpu, liveKey: "running" }] },
+  { section: "KERNEL",       items: [
+    { label: "Processes",      href: "/jobs",      icon: Cpu, liveKey: "running" },
+    { label: "Approvals",      href: "/approvals", icon: ShieldCheck, liveKey: "approvals" },
+  ]},
   { section: "SERVICES",     items: [
     { label: "Agent Registry",  href: "/agents", icon: Bot },
     { label: "Syscall Registry",href: "/tools",  icon: Terminal },
@@ -33,9 +36,11 @@ const INFRA = ["postgres", "redis", "rabbitmq", "qdrant"];
 export function Sidebar() {
   const pathname = usePathname();
   const { data: jobs = [] } = useJobs();
+  const { data: pendingApprovals = [] } = useTasksByStatus("HUMAN_REVIEW");
   const activeCount = jobs.filter(
     (j) => j.status === "RUNNING" || j.status === "PLANNING"
   ).length;
+  const approvalsCount = pendingApprovals.length;
 
   return (
     <aside style={{
@@ -87,7 +92,8 @@ export function Sidebar() {
             </div>
             {items.map(({ label, href, icon: Icon, liveKey }) => {
               const active = href === "/" ? pathname === "/" : pathname.startsWith(href);
-              const count = liveKey === "running" ? activeCount : 0;
+              const count = liveKey === "running" ? activeCount : liveKey === "approvals" ? approvalsCount : 0;
+              const amber = liveKey === "approvals";
               return (
                 <Link key={href} href={href} className={`nav-item${active ? " active" : ""}`}>
                   <Icon className="nav-icon" />
@@ -97,7 +103,8 @@ export function Sidebar() {
                   {count > 0 && (
                     <span style={{
                       fontSize: 10, padding: "1px 6px", borderRadius: 10,
-                      background: "rgba(96,168,144,0.12)", color: "#60A890",
+                      background: amber ? "rgba(200,160,64,0.14)" : "rgba(96,168,144,0.12)",
+                      color: amber ? "#C8A040" : "#60A890",
                       fontWeight: 500, fontVariantNumeric: "tabular-nums",
                     }}>
                       {count}

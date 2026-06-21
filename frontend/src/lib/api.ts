@@ -97,6 +97,16 @@ export const api = {
     delete: (id: string) => request<void>(`/api/v1/memory/${id}`, { method: "DELETE" }),
   },
 
+  tasks: {
+    list: (params?: { status?: string; limit?: number }) => {
+      const p = Object.fromEntries(
+        Object.entries(params ?? {}).filter(([, v]) => v !== undefined)
+      ) as Record<string, string>;
+      const qs = new URLSearchParams(p).toString();
+      return request<Task[]>(`/api/v1/tasks${qs ? `?${qs}` : ""}`);
+    },
+  },
+
   webhooks: {
     list: () => request<Webhook[]>(`/api/v1/webhooks`),
     create: (body: { url: string; events?: string[] | null }) =>

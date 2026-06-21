@@ -70,7 +70,7 @@ if _settings.osy_api_key:
     app.add_middleware(ApiKeyMiddleware, api_key=_settings.osy_api_key)
 
 # Routers
-from osymandias.runtime.api.routers import jobs, agents, tools, metrics, events, memory, providers, webhooks  # noqa: E402
+from osymandias.runtime.api.routers import jobs, agents, tools, metrics, events, memory, providers, webhooks, tasks  # noqa: E402
 
 app.include_router(jobs.router)
 app.include_router(agents.router)
@@ -80,6 +80,7 @@ app.include_router(events.router)
 app.include_router(memory.router)
 app.include_router(providers.router)
 app.include_router(webhooks.router)
+app.include_router(tasks.router)
 
 
 @app.get("/health")

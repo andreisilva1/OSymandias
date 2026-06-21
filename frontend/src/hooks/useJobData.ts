@@ -70,6 +70,14 @@ export function useTaskTrace(jobId: string | null, taskId: string | null) {
   });
 }
 
+export function useTasksByStatus(status: string) {
+  return useQuery({
+    queryKey: ["tasks", status],
+    queryFn: () => api.tasks.list({ status }),
+    refetchInterval: 5000,
+  });
+}
+
 export function useWebhooks() {
   return useQuery({
     queryKey: ["webhooks"],
