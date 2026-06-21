@@ -92,6 +92,8 @@ Interactive prompts ask for your LLM provider and API key. Creates:
 | `osy_tools.py` | Sample `@osy.tool` file to get started |
 | `osymandias.toml` | Project config stub (agent_modules commented out) |
 
+Pass `--example` to also scaffold `example_agent.py` — a runnable `@osy.tool` + `@osy.agent` pair, auto-discovered by `osy serve`. The command then prints a ready-to-run `osy submit` hint, taking you from install to a working job in three commands.
+
 Safe to re-run — existing files are skipped.
 
 ---
@@ -154,6 +156,31 @@ osy logs abc123                      # last 50 events for job abc123...
 osy logs abc123 -f                   # live-stream all events for that job
 osy logs abc123 -f -t TASK_PROGRESS  # live-stream only progress events
 ```
+
+---
+
+### `osy submit`
+
+Submit a job from the terminal — no curl, no dashboard.
+
+```
+osy submit "<goal>" [--watch] [--max-tokens N] [--priority P] [--title T]
+```
+
+| Option | Default | Description |
+|---|---|---|
+| `<goal>` | — | The job goal in plain English (required) |
+| `--watch` / `-w` | off | Stream the job's events live until it reaches a terminal state |
+| `--max-tokens` | — | Token budget cap — the job halts if exceeded |
+| `--priority` | `NORMAL` | `HIGH` · `NORMAL` · `LOW` |
+| `--title` | (goal) | Job title |
+
+```bash
+osy submit "research the EV market and write a report"
+osy submit "summarise X" --max-tokens 50000 --watch
+```
+
+Prints the new job id and a dashboard link; with `--watch` it streams events until the job completes, fails, or trips its budget.
 
 ---
 
@@ -843,10 +870,21 @@ A `JOB_BUDGET_EXCEEDED` event is emitted with the actual usage at the moment of 
 
 ### Human-in-the-loop approval
 
-Mark a task `requires_approval: true` (in `__task_plan__` or a planner task def). The scheduler holds it in `HUMAN_REVIEW` (emitting `TASK_AWAITING_APPROVAL`) instead of dispatching it; the job stays alive while it waits. Approve it to dispatch:
+Gate sensitive work so it waits in `HUMAN_REVIEW` (emitting `TASK_AWAITING_APPROVAL`) until a human approves — enforced by the scheduler, not just the UI. There are two levels, combined with OR:
+
+- **Agent-level** — set `requires_approval` on an `AgentDefinition` (the dashboard agent form, `PUT /api/v1/agents/{name}`, or `@osy.agent("MyAgent", requires_approval=True)`). Every task routed to that agent gates automatically. This is the natural control point since the planner — not you — authors tasks.
+- **Task-level** — set `requires_approval: true` on a task in `__task_plan__`, a planner task def, or `ctx.spawn_tasks([...])`. A per-task override for explicit DAGs.
+
+Approve to dispatch:
 
 ```bash
 curl -X POST http://localhost:47760/api/v1/jobs/<job-id>/tasks/<task-id>/approve
+```
+
+List everything awaiting review across all jobs (powers the dashboard **Approvals** inbox):
+
+```bash
+curl "http://localhost:47760/api/v1/tasks?status=HUMAN_REVIEW"
 ```
 
 ### Lifecycle webhooks
@@ -865,6 +903,10 @@ curl -X DELETE http://localhost:47760/api/v1/webhooks/<id>
 ```
 
 Delivery payload: `{"event_type": "...", "job_id": "...", "payload": {...}}`. Delivery is best-effort.
+
+> **Lifecycle webhook vs tool `webhook_url` — two different things.**
+> A **lifecycle webhook** (this page / `/api/v1/webhooks`) is *outbound*: OSymandias POSTs to your URL **every time a job finishes** (completed/failed/cancelled/budget exceeded), regardless of the prompt. Use it to notify Slack, trigger an n8n flow, update a dashboard, etc.
+> A tool's **`webhook_url`** (on the Syscall Registry / `@osy.tool`) is the opposite — *inbound execution*: it's the endpoint OSymandias **calls to run that tool** during a job. To make an agent "do X and send it to Slack" on demand, register a Slack tool with a `webhook_url` (e.g. a Slack incoming webhook); the agent calls it when the task asks. Lifecycle webhooks are not prompt-driven.
 
 ### Cost & token breakdown
 
@@ -918,12 +960,14 @@ LLM_CACHE_TTL_SECONDS=86400
 | Page | URL | Description |
 |------|-----|-------------|
 | Jobs | `/jobs` | Job list — search, filter by status, pagination |
-| Job detail | `/jobs/{id}` | Output viewer (JSON/markdown/image/audio), events feed, task tree timeline, resubmit button |
+| Job detail | `/jobs/{id}` | Output viewer, events feed, task timeline, cost breakdown & trace tabs, failure banner, per-task approve, resubmit |
+| Approvals | `/approvals` | Cross-job inbox of tasks in `HUMAN_REVIEW`, each with an approve button (live count badge in the sidebar) |
 | Agents | `/agents` | Agent registry — builtin and external agents, adaptive detail panel, filter by type/framework |
 | Tools | `/tools` | Built-in tools and `@osy.tool` functions |
 | Memory | `/memory` | Browse and search job/agent memory entries, delete individual keys |
 | Events | `/events` | Global live event stream — pause/resume, filter by job |
 | Metrics | `/metrics` | 7-day charts: jobs, tokens, cost estimate, success rate |
+| Webhooks | `/webhooks` | Register/remove lifecycle webhook subscribers |
 
 ### Live output preview
 

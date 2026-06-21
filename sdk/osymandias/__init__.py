@@ -1,7 +1,7 @@
 from osymandias.decorator import _Osy
 from osymandias.runtime.context import OsyContext
 
-__version__ = "1.1.0"
+__version__ = "1.1.1"
 
 osy = _Osy()
 

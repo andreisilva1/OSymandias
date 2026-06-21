@@ -72,7 +72,7 @@ export function Sidebar() {
               OSymandias
             </div>
             <div style={{ fontSize: 10, fontWeight: 300, color: "#384858", marginTop: 1 }}>
-              v1.1.0 · runtime
+              v1.1.1 · runtime
             </div>
           </div>
         </div>
