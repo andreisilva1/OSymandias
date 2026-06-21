@@ -10,7 +10,7 @@
 
 **Multi-agent runtime for Python developers. One command to start everything.**
 
-[![PyPI](https://img.shields.io/pypi/v/osymandias?style=flat-square&color=C8A040)](https://pypi.org/project/osymandias)
+[![PyPI](https://img.shields.io/pypi/v/osymandias?style=flat-square&color=C8A040&cacheSeconds=3600)](https://pypi.org/project/osymandias)
 [![Python](https://img.shields.io/badge/python-3.11+-blue?style=flat-square)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green?style=flat-square)](LICENSE)
 [![Tests](https://github.com/andreisilva1/OSymandias/actions/workflows/tests.yml/badge.svg)](https://github.com/andreisilva1/OSymandias/actions/workflows/tests.yml)

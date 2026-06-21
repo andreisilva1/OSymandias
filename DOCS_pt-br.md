@@ -68,7 +68,7 @@ pip install osymandias[all]
 Exibe a versão instalada e encerra.
 
 ```bash
-osy --version   # osy 1.0.1
+osy --version   # osy 1.1.1
 osy -V
 ```
 

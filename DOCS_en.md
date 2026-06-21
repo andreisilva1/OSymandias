@@ -68,7 +68,7 @@ pip install osymandias[all]
 Print the installed version and exit.
 
 ```bash
-osy --version   # osy 0.3.0
+osy --version   # osy 1.1.1
 osy -V
 ```
 
